@@ -62,9 +62,9 @@ def play_blackjack(bankroll, multiplier):
     dealer_hand.append(deck.pop())
 
     # Debug
-    player_hand, deck = setup_hand(player_hand, ['4', '6'], deck)
-    dealer_hand, deck = setup_hand(dealer_hand, ['10', '3'], deck)
-
+    # player_hand, deck = setup_hand(player_hand, ['4', '4'], deck)
+    # dealer_hand, deck = setup_hand(dealer_hand, ['10', '3'], deck)
+    
     # Check if the player has a blackjack
     if calculate_hand(player_hand) == 21:
         print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
@@ -77,10 +77,6 @@ def play_blackjack(bankroll, multiplier):
             new_bankroll = bankroll + bet * 1.5 * current_multiplier
             return new_bankroll, multipliers.get(22, 1)
 
-    # Print current multiplier, if it exists
-    # player_total = calculate_hand(player_hand)
-    # if player_total > 3 and player_total < 23:
-        # current_multiplier = multipliers.get(player_total, 1)
     print(f"Current multiplier: x{current_multiplier}")
 
     # Player's turn
@@ -89,7 +85,9 @@ def play_blackjack(bankroll, multiplier):
         print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
         print(f"Dealer's upcard: {dealer_hand[0]}")
 
-        if len(player_hand) == 2 and not doubled:
+        if len(player_hand) == 2 and not doubled and player_hand[0]==player_hand[1]:
+            choice = input("Do you want to (h)it, (s)tand, s(p)lit or (d)ouble down? ").lower()
+        elif len(player_hand) == 2 and not doubled:
             choice = input("Do you want to (h)it, (s)tand, or (d)ouble down? ").lower()
         else:
             choice = input("Do you want to (h)it or (s)tand? ").lower()
@@ -157,8 +155,10 @@ while True:
         print("You've run out of money. Game over!")
         break
     bankroll, multiplier = play_blackjack(bankroll, multiplier)
-    print(f"Bankroll: {bankroll}, Multiplier: {multiplier}")
+    print(f"Hand: {handcount}, Bankroll: {bankroll}, Multiplier: {multiplier}")
     handcount += 1
+    # if handcount > 2: 
+    #     break
     # play_again = input("\nDo you want to play again? (y/n) ").lower()
     # if play_again != 'y':
     #     break
