@@ -36,30 +36,24 @@ def calculate_hand(hand):
     return total
 
 # Function to set up a hand for testing
-def setup_hand(player_hand, dealer_hand, player_total, dealer_total):
-    player_hand.clear()
-    dealer_hand.clear()
-    player_hand.extend(['10', 'Ace'])
-    dealer_hand.extend(['King', '7'])
-    return player_total, dealer_total
+def setup_hand(hand, new_hand, deck):
+    hand.clear()
+    hand.extend(new_hand)
+    deck.remove(new_hand[0])
+    deck.remove(new_hand[1])
+    return hand, deck
 
 # Function to play a game of blackjack
-def play_blackjack(bankroll):
+def play_blackjack(bankroll, multiplier):
     deck = list(card_values.keys()) * 4
     random.shuffle(deck)
 
     player_hand = []
     dealer_hand = []
-    current_multiplier = 1  # Default multiplier
-
-    # Get the player's bet
-    while True:
-        bet = input(f"Your bankroll: {bankroll}. Enter your bet: ")
-        if bet.isdigit() and 1 <= int(bet) <= bankroll:
-            bet = int(bet)
-            break
-        else:
-            print("Invalid bet. Please enter a valid number within your bankroll.")
+    current_multiplier = multiplier
+    # Player's bet is fixed on 10
+    bet = 10
+    bankroll -= bet
 
     # Deal initial cards
     player_hand.append(deck.pop())
@@ -67,22 +61,27 @@ def play_blackjack(bankroll):
     player_hand.append(deck.pop())
     dealer_hand.append(deck.pop())
 
+    # Debug
+    player_hand, deck = setup_hand(player_hand, ['4', '6'], deck)
+    dealer_hand, deck = setup_hand(dealer_hand, ['10', '3'], deck)
+
     # Check if the player has a blackjack
     if calculate_hand(player_hand) == 21:
         print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
         print(f"Dealer's hand: {dealer_hand}, Total: {calculate_hand(dealer_hand)}")
         if calculate_hand(dealer_hand) == 21:
             print("Both you and the dealer have a blackjack! It's a tie.")
-            return bankroll
+            return bankroll, 1
         else:
             print("Blackjack! You win!")
-            return bankroll + bet * 1.5
+            new_bankroll = bankroll + bet * 1.5 * current_multiplier
+            return new_bankroll, multipliers.get(22, 1)
 
     # Print current multiplier, if it exists
-    player_total = calculate_hand(player_hand)
-    if player_total > 3 and player_total < 23:
-        current_multiplier = multipliers.get(player_total, 1)
-        print(f"Current multiplier: x{current_multiplier}")
+    # player_total = calculate_hand(player_hand)
+    # if player_total > 3 and player_total < 23:
+        # current_multiplier = multipliers.get(player_total, 1)
+    print(f"Current multiplier: x{current_multiplier}")
 
     # Player's turn
     doubled = False
@@ -100,7 +99,7 @@ def play_blackjack(bankroll):
             if calculate_hand(player_hand) > 21:
                 print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
                 print("Bust! You lose.")
-                return bankroll - bet
+                return bankroll - bet, 1
         elif choice == 's':
             break
         elif choice == 'd' and len(player_hand) == 2 and not doubled and bankroll >= bet * 2:
@@ -127,28 +126,41 @@ def play_blackjack(bankroll):
 
     if dealer_total > 21:
         print("Dealer busts! You win.")
-        return bankroll + bet * current_multiplier
+        new_bankroll = bankroll + bet * current_multiplier
+        print (f"Setting new multiplier for {player_total}: x{multipliers.get(player_total, 1)}")
+        new_multiplier = multipliers.get(player_total, 1) 
+        return new_bankroll, new_multiplier
     elif player_total > dealer_total:
         print("You win!")
-        return bankroll + bet * current_multiplier
+        new_bankroll = bankroll + bet * current_multiplier
+        print (f"Setting new multiplier for {player_total}: x{multipliers.get(player_total, 1)}")
+        new_multiplier = multipliers.get(player_total, 1) 
+        return new_bankroll, new_multiplier
     elif player_total < dealer_total:
         print("Dealer wins!")
-        return bankroll - bet
+        current_multiplier = 1
+        return bankroll - bet, 1
     else:
         print("It's a tie!")
-        return bankroll
+        current_multiplier = 1
+        return bankroll, 1
 
 # Start the game
-bankroll = 100
+bankroll = 200
+multiplier = 1
+handcount = 0
 while True:
     print(f"\nYour bankroll: {bankroll}")
+    # player_total, dealer_total = setup_hand(player_hand, dealer_hand, player_total, dealer_total)
+
     if bankroll <= 0:
         print("You've run out of money. Game over!")
         break
-
-    bankroll = play_blackjack(bankroll)
-    play_again = input("\nDo you want to play again? (y/n) ").lower()
-    if play_again != 'y':
-        break
+    bankroll, multiplier = play_blackjack(bankroll, multiplier)
+    print(f"Bankroll: {bankroll}, Multiplier: {multiplier}")
+    handcount += 1
+    # play_again = input("\nDo you want to play again? (y/n) ").lower()
+    # if play_again != 'y':
+    #     break
 
 print(f"\nYou left the game with a bankroll of {bankroll}. Thanks for playing!")
