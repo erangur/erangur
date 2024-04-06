@@ -1,30 +1,8 @@
 import random
+import multipliers
 
 BET = 1
 SPLIT_CHOICES = ['h', 's']
-
-MID_MULTIPLIERS = {
-    4: 2,
-    5: 2,
-    6: 2,
-    7: 2,
-    8: 2,
-    9: 2,
-    10: 2,
-    11: 2,
-    12: 2,
-    13: 2,
-    14: 2,
-    15: 2,
-    16: 2,
-    17: 2,
-    18: 3,
-    19: 4,
-    20: 5,
-    21: 6,
-    22: 8  # Blackjack
-}
-
 
 # Card values
 card_values = {
@@ -63,9 +41,9 @@ def setup_hand():
     player_hand = [deck.pop(), deck.pop()]
     dealer_hand = [deck.pop(), deck.pop()]
     print("Dealer has a " + dealer_hand[0] + " showing.")
-    multipliers = MID_MULTIPLIERS
-    print("Chosen multipliers: " + str(multipliers))
-    return deck, player_hand, dealer_hand, multipliers
+    hand_multipliers = multipliers.roll_multiplier()
+    print("Chosen multipliers: " + str(hand_multipliers))
+    return deck, player_hand, dealer_hand, hand_multipliers
 
 def dealer_turn(deck, dealer_hand):
     while calculate_hand(dealer_hand) < 17:
@@ -77,11 +55,6 @@ def get_initial_choices(hand):
     if hand[0] == hand[1]:
         choices.append('p')
     return choices
-
-def get_hit_choices(hand):
-    if len(hand) == 2 and hand[0] == hand[1]:
-        return ['h', 's', 'p']
-    return ['h', 's']
 
 def player_turn(deck, player_hand, choices):
     print("Your hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")")
@@ -98,7 +71,7 @@ def player_turn(deck, player_hand, choices):
         card = deck.pop()
         print("You drew a " + card)
         player_hand.append(card)
-        return player_turn(deck, player_hand, get_hit_choices(player_hand))
+        return player_turn(deck, player_hand, ['h', 's'])
     elif choice == 's':
         return [(player_hand, False)]
     elif choice == 'd':
@@ -106,13 +79,16 @@ def player_turn(deck, player_hand, choices):
         print("After double, your hand is: " + ", ".join(player_hand))
         return [(player_hand, True)]
     elif choice == 'p':
+        if player_hand[0] == "Ace":
+            draws = [deck.pop(), deck.pop()]
+            return [([player_hand[0], draws[0]], False), ([player_hand[1], draws[1]], False)]
         return player_turn(deck, [player_hand[0]], SPLIT_CHOICES) + player_turn(deck, [player_hand[1]], SPLIT_CHOICES)
 
 def calculate_hand_cost(player_hands):
     return BET + sum(BET * (2 if doubled else 1) for hand, doubled in player_hands)
 
 def play_hand(bankroll, current_multiplier):
-    deck, player_hand, dealer_hand, multipliers = setup_hand()
+    deck, player_hand, dealer_hand, hand_multipliers = setup_hand()
     
     # Check if the player has a blackjack
     if calculate_hand(player_hand) == 21:
@@ -125,7 +101,7 @@ def play_hand(bankroll, current_multiplier):
         else:
             print("Blackjack! You win!")
             new_bankroll = bankroll + BET + BET * 1.5 * current_multiplier
-            return new_bankroll, multipliers.get(22, 1)
+            return new_bankroll, hand_multipliers["BJ"]
 
     player_initial_choices = get_initial_choices(player_hand)
     player_hands = player_turn(deck, player_hand, player_initial_choices)
@@ -142,7 +118,7 @@ def play_hand(bankroll, current_multiplier):
             continue
         if dealer_hand_value < player_hand_value or dealer_hand_value > 21:
             won_amount += BET * (2 if doubled else 1) * (current_multiplier + 1)
-            next_hand_multiplier = max(next_hand_multiplier, multipliers[player_hand_value])
+            next_hand_multiplier = max(next_hand_multiplier, hand_multipliers[max(player_hand_value, 17)])
         elif dealer_hand_value == player_hand_value:
             won_amount += BET
     
