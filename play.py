@@ -1,7 +1,7 @@
 import random
 
 BET = 1
-SPLIT_CHOICES = ['h', 's'] # Can you double?
+SPLIT_CHOICES = ['h', 's']
 
 MID_MULTIPLIERS = {
     4: 2,
@@ -46,7 +46,9 @@ choice_to_action = {
 }
 
 def make_choice(choices):
-    choice = input("Do you want to " + " or ".join(choice_to_action[choice] + "(" + choice + ")" for choice in choices) + "? ")
+    display_choices = list(choice_to_action[choice] + " (" + choice + ")" for choice in choices)
+    display_choices[-1] = "or " + display_choices[-1]
+    choice = input("Do you want to " + ", ".join(display_choices) + ": ")
     if choice in choices:
         return choice
     else:
@@ -79,38 +81,49 @@ def get_hit_choices(hand):
         return ['h', 's', 'p']
     return ['h', 's']
 
-def player_turn(deck, player_hand, choices, number_of_multipliers=0):
+def player_turn(deck, player_hand, choices):
     print("Your hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")")
     player_hand_value = calculate_hand(player_hand)
     if (player_hand_value > 21):
         print("You busted with a hand of " + str(player_hand_value))
-        return [(player_hand, number_of_multipliers)]
+        return [(player_hand, False)]
     if (player_hand_value == 21):
         print("You got a 21 with a hand of " + str(player_hand_value) + "!")
-        return [(player_hand, number_of_multipliers)]
+        return [(player_hand, False)]
     
     choice = make_choice(choices)
     if choice == 'h':
         card = deck.pop()
         print("You drew a " + card)
         player_hand.append(card)
-        return player_turn(deck, player_hand, get_hit_choices(player_hand), number_of_multipliers)
+        return player_turn(deck, player_hand, get_hit_choices(player_hand))
     elif choice == 's':
-        return [(player_hand, number_of_multipliers)]
+        return [(player_hand, False)]
     elif choice == 'd':
         player_hand.append(deck.pop())
         print("After double, your hand is: " + ", ".join(player_hand))
-        return [(player_hand, number_of_multipliers + 1)]
+        return [(player_hand, True)]
     elif choice == 'p':
         return player_turn(deck, [player_hand[0]], SPLIT_CHOICES) + player_turn(deck, [player_hand[1]], SPLIT_CHOICES)
 
 def calculate_hand_cost(player_hands):
-    return BET + sum(BET * (2 ** number_of_multipliers) for hand, number_of_multipliers in player_hands)
+    return BET + sum(BET * (2 if doubled else 1) for hand, doubled in player_hands)
 
 def play_hand(bankroll, current_multiplier):
     deck, player_hand, dealer_hand, multipliers = setup_hand()
     
-    ### check blackjack
+    # Check if the player has a blackjack
+    if calculate_hand(player_hand) == 21:
+        hand_cost = 2 * BET
+        print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
+        print(f"Dealer's hand: {dealer_hand}, Total: {calculate_hand(dealer_hand)}")
+        if calculate_hand(dealer_hand) == 21:
+            print("Both you and the dealer have a blackjack! It's a tie.")
+            return bankroll + BET - hand_cost, 1
+        else:
+            print("Blackjack! You win!")
+            new_bankroll = bankroll + BET + BET * 1.5 * current_multiplier
+            return new_bankroll, multipliers.get(22, 1)
 
     player_initial_choices = get_initial_choices(player_hand)
     player_hands = player_turn(deck, player_hand, player_initial_choices)
@@ -120,14 +133,13 @@ def play_hand(bankroll, current_multiplier):
     next_hand_multiplier = 1
     won_amount = 0
     for hand in player_hands:
-        player_hand, number_of_multipliers = hand
-        print("Player's hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")")
-        print("Number of multipliers: " + str(number_of_multipliers))
+        player_hand, doubled = hand
+        print("Player's hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")" + (" (doubled!)" if doubled else ""))
         player_hand_value = calculate_hand(player_hand)
         if player_hand_value > 21:
             continue
         if dealer_hand_value < player_hand_value or dealer_hand_value > 21:
-            won_amount += 2 * BET * (2 ** number_of_multipliers) * current_multiplier
+            won_amount += BET * (2 if doubled else 1) * (current_multiplier + 1)
             next_hand_multiplier = max(next_hand_multiplier, multipliers[player_hand_value])
         elif dealer_hand_value == player_hand_value:
             won_amount += BET
