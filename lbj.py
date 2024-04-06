@@ -1,5 +1,9 @@
 import random
 
+RED = '\033[91m'
+GREEN = '\033[92m'
+RESET = '\033[0m'
+
 # Card values
 card_values = {
     'Ace': 11,  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'Jack': 10, 'Queen': 10, 'King': 10
@@ -96,7 +100,7 @@ def play_blackjack(bankroll, multiplier):
             player_hand.append(deck.pop())
             if calculate_hand(player_hand) > 21:
                 print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
-                print("Bust! You lose.")
+                print(RED + "Bust! You lose." + RESET)
                 return bankroll - bet, 1
         elif choice == 's':
             break
@@ -106,9 +110,12 @@ def play_blackjack(bankroll, multiplier):
             player_hand.append(deck.pop())
             print(f"\nYour hand after doubling down: {player_hand}, Total: {calculate_hand(player_hand)}")
             if calculate_hand(player_hand) > 21:
-                print("Bust! You lose.")
+                print(RED + "Bust! You lose." + RESET)
                 return bankroll - bet
             break
+        elif choice == 'p' and len(player_hand) == 2 and not doubled and bankroll >= bet * 2:
+            #todo: handle splits
+            print (RED + "Splitting not supported yet!" + RESET)
         else:
             print("Invalid choice. Please enter 'h', 's', or 'd' (if applicable and sufficient bankroll).")
 
@@ -123,23 +130,23 @@ def play_blackjack(bankroll, multiplier):
     dealer_total = calculate_hand(dealer_hand)
 
     if dealer_total > 21:
-        print("Dealer busts! You win.")
+        print(GREEN + "Dealer busts! You win." + RESET)
         new_bankroll = bankroll + bet * current_multiplier
         print (f"Setting new multiplier for {player_total}: x{multipliers.get(player_total, 1)}")
         new_multiplier = multipliers.get(player_total, 1) 
         return new_bankroll, new_multiplier
     elif player_total > dealer_total:
-        print("You win!")
+        print(GREEN + "You win!" + RESET)
         new_bankroll = bankroll + bet * current_multiplier
         print (f"Setting new multiplier for {player_total}: x{multipliers.get(player_total, 1)}")
         new_multiplier = multipliers.get(player_total, 1) 
         return new_bankroll, new_multiplier
     elif player_total < dealer_total:
-        print("Dealer wins!")
+        print(RED + "Dealer wins!" + RESET)
         current_multiplier = 1
         return bankroll - bet, 1
     else:
-        print("It's a tie!")
+        print(RED + "Push!" + RESET)
         current_multiplier = 1
         return bankroll, 1
 
