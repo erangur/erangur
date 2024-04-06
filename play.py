@@ -34,8 +34,10 @@ card_values = {
 # Function to calculate the total value of a hand
 def calculate_hand(hand):
     total = sum(card_values[card] for card in hand)
-    if 'Ace' in hand and total > 21:
+    num_aces = hand.count('Ace')
+    while total > 21 and num_aces:
         total -= 10
+        num_aces -= 1
     return total
 
 choice_to_action = {
