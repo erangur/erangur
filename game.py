@@ -1,6 +1,16 @@
 import random
 import multipliers
 
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+BOLD = '\033[1m'
+BLUE = '\033[34m'
+C_PLAYER = '\033[46m'
+C_DEALER = '\033[41m'
+RESET = '\033[0m'
+
+
 BET = 1
 SPLIT_CHOICES = ['h', 's']
 
@@ -40,9 +50,9 @@ def setup_hand():
     random.shuffle(deck)
     player_hand = [deck.pop(), deck.pop()]
     dealer_hand = [deck.pop(), deck.pop()]
-    print("Dealer has a " + dealer_hand[0] + " showing.")
+    print(C_DEALER + "Dealer shows: " + dealer_hand[0] + RESET)
     hand_multipliers = multipliers.roll_multiplier()
-    print("Chosen multipliers: " + str(hand_multipliers))
+    # print("Chosen multipliers: " + str(hand_multipliers))
     return deck, player_hand, dealer_hand, hand_multipliers
 
 def dealer_turn(deck, dealer_hand):
@@ -57,7 +67,7 @@ def get_initial_choices(hand):
     return choices
 
 def player_turn(deck, player_hand, choices):
-    print("Your hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")")
+    print(C_PLAYER + "Your hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")" + RESET)
     player_hand_value = calculate_hand(player_hand)
     if (player_hand_value > 21):
         print("You busted with a hand of " + str(player_hand_value))
@@ -93,8 +103,8 @@ def play_hand(bankroll, current_multiplier):
     # Check if the player has a blackjack
     if calculate_hand(player_hand) == 21:
         hand_cost = 2 * BET
-        print(f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}")
-        print(f"Dealer's hand: {dealer_hand}, Total: {calculate_hand(dealer_hand)}")
+        print(C_PLAYER + f"\nYour hand: {player_hand}, Total: {calculate_hand(player_hand)}" + RESET)
+        print(C_DEALER + f"Dealer's hand: {dealer_hand}, Total: {calculate_hand(dealer_hand)}" + RESET)
         if calculate_hand(dealer_hand) == 21:
             print("Both you and the dealer have a blackjack! It's a tie.")
             return bankroll + BET - hand_cost, 1
@@ -106,13 +116,13 @@ def play_hand(bankroll, current_multiplier):
     player_initial_choices = get_initial_choices(player_hand)
     player_hands = player_turn(deck, player_hand, player_initial_choices)
     dealer_hand_value = dealer_turn(deck, dealer_hand)
-    print("Dealer's hand: " + ", ".join(dealer_hand) + " (" + str(dealer_hand_value) + ")")
+    print(C_DEALER +"Dealer's hand: " + ", ".join(dealer_hand) + " (" + str(dealer_hand_value) + ")" + RESET)
     hand_cost = calculate_hand_cost(player_hands)
     next_hand_multiplier = 1
     won_amount = 0
     for hand in player_hands:
         player_hand, doubled = hand
-        print("Player's hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")" + (" (doubled!)" if doubled else ""))
+        print(C_PLAYER + "Player's hand: " + ", ".join(player_hand) + " (" + str(calculate_hand(player_hand)) + ")" + (" (doubled!)" if doubled else "") + RESET)
         player_hand_value = calculate_hand(player_hand)
         if player_hand_value > 21:
             continue
@@ -131,14 +141,14 @@ bankroll = 200
 multiplier = 1
 hand_count = 1
 while True:
-    print(f"\nYour bankroll: {bankroll}")
+    print(f"Your bankroll: {bankroll}")
 
     if bankroll <= 0:
         print("You've run out of money. Game over!")
         break
 
     bankroll, multiplier = play_hand(bankroll, multiplier)
-    print(f"Hand: {hand_count}, Bankroll: {bankroll}, Multiplier: {multiplier}")
+    print(f"==========================================================\n\nHand: {hand_count}, Bankroll: {bankroll}, Multiplier: {multiplier}")
     hand_count += 1
 
 print(f"\nYou left the game with a bankroll of {bankroll}. Thanks for playing!")
