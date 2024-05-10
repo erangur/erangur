@@ -34,6 +34,14 @@ class GameAI():
         self.reset()
 
     def reset(self):
+        self._new_hand()
+        debug(C_DEALER + "Dealer shows: " + self.dealer_hand[0] + RESET)
+        self.hand_multipliers = multipliers.roll_multiplier()
+        debug("Chosen multipliers: " + str(self.hand_multipliers))
+        self.reward = 0
+        return self._get_state()
+    
+    def _new_hand(self, multiplier = 1):
         if (self.rigged_player_hand):
             player_hand = hands.Hand(self.rigged_player_hand)
         else:
@@ -43,16 +51,10 @@ class GameAI():
             self.dealer_upcard = self.rigged_dealer_card
         else:    
             self.dealer_upcard = cards.random_card()
-    
-        debug(C_DEALER + "Dealer shows: " + self.dealer_hand[0] + RESET)
-        self.hand_multipliers = multipliers.roll_multiplier()
-        debug("Chosen multipliers: " + str(self.hand_multipliers))
-        self.done = False
-        self.current_multiplier = 1
         self.action_space = player_hand.get_choices()
         self.player_hands = [player_hand]
-        return self._get_state()
-    
+        self.current_multiplier = multiplier
+
     def _get_state(self):
        return (self.hand_multipliers, self.current_multiplier, self.dealer_upcard, [hand.get_state() for hand in self.player_hands])
 
@@ -74,14 +76,17 @@ class GameAI():
         
         next_hand = self._get_active_hand()
         if next_hand == None:
-            self.done = True
-            debug(f"Game is done.")
-            reward, next_hand_multiplier = self._eval_game()
-            
+            next_hand_multiplier, reward, done = self._eval_game()
+            self.reward += reward
+            if done:
+                return self._get_state(), self.reward, True, []
+            else:
+                self._new_hand(next_hand_multiplier)
+                return self._get_state(), self.reward, False, self._get_active_hand().get_choices()
         else:
             self.action_space = next_hand.get_choices()
             debug(f"New state is {self._get_state()}")
-            return self._get_state()
+            return self._get_state(), self.reward, False, next_hand.get_choices()
 
     def _get_active_hand(self):
         for hand in self.player_hands:
@@ -102,6 +107,7 @@ class GameAI():
         won_amount = 0
         debug(C_DEALER + "Dealer hand: " + str(self.dealer_hand) + RESET)
         debug("Dealer total: " + str(dealer_value))
+        done = True
         for hand in self.player_hands:
             if hand.is_blackjack():
                 # at least push
@@ -110,6 +116,7 @@ class GameAI():
                 if not (dealer_value == 21 and len(self.dealer_hand) == 2):
                     won_amount += BET * 1.5 * self.current_multiplier
                     next_hand_multiplier = self.hand_multipliers["BJ"]
+                    done = False
                 continue
 
             hand_value = hand.get_hand_value()
@@ -124,9 +131,9 @@ class GameAI():
             # else - WIN
             won_amount += BET * (2 if hand.is_doubled() else 1) * (self.current_multiplier + 1)
             next_hand_multiplier = max(next_hand_multiplier, self.hand_multipliers[max(hand_value, 17)])
+            done = False
 
-        return won_amount - hand_cost, next_hand_multiplier
-
+        return next_hand_multiplier, won_amount - hand_cost, done
 
     def _calculate_hand_cost(self):
         return BET + sum(BET * (2 if hand.is_doubled() else 1) for hand in self.player_hands)

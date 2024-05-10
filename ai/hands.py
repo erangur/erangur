@@ -62,7 +62,6 @@ class Hand():
     
     def _is_doublable(self):
         return len(self.hand) == 2 and not self.is_split
-    
 
 
 def random_hand():
