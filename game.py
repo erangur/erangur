@@ -1,5 +1,5 @@
 import random
-import multipliers
+import multipliersV1
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -51,7 +51,7 @@ def setup_hand():
     player_hand = [deck.pop(), deck.pop()]
     dealer_hand = [deck.pop(), deck.pop()]
     print(C_DEALER + "Dealer shows: " + dealer_hand[0] + RESET)
-    hand_multipliers = multipliers.roll_multiplier()
+    hand_multipliers = multipliersV1.roll_multiplier()
     # print("Chosen multipliers: " + str(hand_multipliers))
     return deck, player_hand, dealer_hand, hand_multipliers
 
