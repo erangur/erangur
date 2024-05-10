@@ -33,7 +33,7 @@ class GameAI():
     def reset(self):
         self._new_hand()
         debug(C_DEALER + "Dealer shows: " + self.dealer_upcard + RESET)
-        self.hand_multipliers = multipliers.roll_multiplier()
+        self.hand_multipliers = multipliers.default_multiplier()
         debug("Chosen multipliers: " + str(self.hand_multipliers))
         self.reward = 0
         return self._get_state()
