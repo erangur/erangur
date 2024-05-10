@@ -8,7 +8,7 @@
 
 import cards
 import multipliers
-import hands as hands
+import hands
 
 debug_mode = True
 BET = 1
