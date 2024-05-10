@@ -27,11 +27,8 @@ def debug(msg):
         print(msg)
 
 class GameAI():
-    def _init_(self, rigged_player_hand = None, rigged_dealer_card = None):
-        self.rigged_player_hand = rigged_player_hand
-        self.rigged_dealer_card = rigged_dealer_card
-    
-        self.reset()
+    def _init_(self, rigged_player_hand = None, rigged_dealer_card = None):    
+        self.reset(rigged_player_hand = rigged_player_hand, rigged_dealer_card = rigged_dealer_card)
 
     def reset(self):
         self._new_hand()
@@ -41,14 +38,14 @@ class GameAI():
         self.reward = 0
         return self._get_state()
     
-    def _new_hand(self, multiplier = 1):
-        if (self.rigged_player_hand):
-            player_hand = hands.Hand(self.rigged_player_hand)
+    def _new_hand(self, multiplier = 1, rigged_player_hand = None, rigged_dealer_card = None):
+        if (rigged_player_hand):
+            player_hand = hands.Hand(rigged_player_hand)
         else:
             player_hand = hands.random_hand()
         
-        if (self.rigged_dealer_card):
-            self.dealer_upcard = self.rigged_dealer_card
+        if (rigged_dealer_card):
+            self.dealer_upcard = rigged_dealer_card
         else:    
             self.dealer_upcard = cards.random_card()
         self.action_space = player_hand.get_choices()
