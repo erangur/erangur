@@ -1,7 +1,13 @@
 import cards
+
+
 from enum import Enum
 
-action = Enum('action', ['stand', 'hit', 'double', 'split'])
+class Action(Enum):
+    STAND = 'stand'
+    HIT = 'hit'
+    DOUBLE = 'double'
+    SPLIT = 'split'
 
 class Hand():
     def _init_(self, hand, is_doubled = False, is_active = True, is_split = False):
@@ -11,11 +17,11 @@ class Hand():
         self.is_split = is_split
 
     def get_choices(self):
-        choices = [action.stand, action.hit]
+        choices = [Action.STAND, Action.HIT]
         if self._is_doublable():
-            choices.append(action.double)
+            choices.append(Action.DOUBLE)
         if self._is_splittable():
-            choices.append(action.split)
+            choices.append(Action.SPLIT)
         return choices
     
     def get_state(self):
@@ -29,14 +35,6 @@ class Hand():
     
     def is_doubled(self):
         return self.is_doubled
-    
-    def get_choices(self):
-        choices = [action.hit, action.stand]
-        if len(self.hand) == 2:
-            choices.append(action.double)
-        if self.is_splittable():
-            choices.append(action.split)
-        return choices
 
     def hit(self):
         self.hand.append(cards.random_card())

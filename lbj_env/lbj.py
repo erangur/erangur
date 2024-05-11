@@ -27,7 +27,7 @@ def debug(msg):
         print(msg)
 
 class GameAI:
-    def __init__(self, rigged_player_hand=None, rigged_dealer_card=None):    
+    def __init__(self, rigged_player_hand=None, rigged_dealer_card=None):
         self.reset(rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
 
     def reset(self, rigged_player_hand=None, rigged_dealer_card=None):
@@ -37,7 +37,7 @@ class GameAI:
         debug("Chosen multipliers: " + str(self.hand_multipliers))
         self.reward = 0
         return self._get_state()
-    
+
     def _new_hand(self, multiplier=1, rigged_player_hand=None, rigged_dealer_card=None):
         if rigged_player_hand:
             player_hand = hands.Hand(rigged_player_hand)

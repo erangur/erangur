@@ -10,17 +10,11 @@ card_values = {
 }
 
 def calculate_hand(hand):
-    soft = False
-    splittable = False
     total = sum(card_values[card] for card in hand)
     num_aces = hand.count('Ace')
     while total > 21 and num_aces:
-        soft = True
         total -= 10
         num_aces -= 1
 
-    if len(hand)==2 and hand[0]==hand[1]:
-        splittable=True
-
-    return total, soft, splittable
+    return total
     
