@@ -71,7 +71,7 @@ class GameAI:
         elif action == hands.Action.DOUBLE:
             current_hand.double()
         elif action == hands.Action.SPLIT:
-            self.player_hands.extend(current_hand.split())
+            self.player_hands = current_hand.split()
 
         next_hand = self._get_active_hand()
         if next_hand is None:

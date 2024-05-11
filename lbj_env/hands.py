@@ -10,10 +10,10 @@ class Action(Enum):
     SPLIT = 'split'
 
 class Hand():
-    def __init__(self, hand, is_doubled = False, is_active = True, is_split = False):
+    def __init__(self, hand, is_split=False):
         self.hand = hand
-        self.is_doubled = is_doubled
-        self.is_active = is_active
+        self.is_doubled = False
+        self.is_active = True
         self.is_split = is_split
 
     def get_choices(self):
@@ -50,7 +50,7 @@ class Hand():
         self.is_active = False
 
     def split(self):
-        return [Hand([self.hand[0]], is_split = True), Hand([self.hand[1]], is_split = True)]
+        return [Hand([self.hand[0]], is_split=True), Hand([self.hand[1]], is_split=True)]
 
     def _is_soft(self):
         return cards.is_soft(self.hand)
