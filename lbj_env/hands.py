@@ -31,11 +31,11 @@ class Hand():
         return self.is_doubled
     
     def get_choices(self):
-        choices = ['h', 's']
+        choices = [action.hit, action.stand]
         if len(self.hand) == 2:
-            choices.append('d')
+            choices.append(action.double)
         if self.is_splittable():
-            choices.append('p')
+            choices.append(action.split)
         return choices
 
     def hit(self):
