@@ -31,7 +31,7 @@ class Hand():
         return cards.calculate_hand(self.hand)
 
     def is_blackjack(self):
-        return cards.calculate_hand(self.hand) == 21 and len(self.hand) == 2 and not self.is_split
+        return self.get_hand_value() == 21 and len(self.hand) == 2 and not self.is_split
     
     def is_doubled(self):
         return self.is_doubled
@@ -53,7 +53,7 @@ class Hand():
         return [Hand([self.hand[0]], is_split = True), Hand([self.hand[1]], is_split = True)]
 
     def _is_soft(self):
-        return cards.calculate_hand(self.hand) - self.hand.count('Ace') * 10 <= 11
+        return cards.is_soft(self.hand)
     
     def _is_splittable(self):
         return len(self.hand) == 2 and self.hand[0] == self.hand[1] and not self.is_split
