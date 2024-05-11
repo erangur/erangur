@@ -28,11 +28,11 @@ def debug(msg):
 
 class GameAI:
     def __init__(self, rigged_player_hand=None, rigged_dealer_card=None):
-        self.hand_multipliers = multipliers.default_multiplier()
-        # self.reset(rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
+        self.rigged_player_hand = rigged_player_hand
+        self.rigged_dealer_card = rigged_dealer_card
 
-    def reset(self, rigged_player_hand=None, rigged_dealer_card=None):
-        self._new_hand(multiplier=1, rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
+    def reset(self):
+        self._new_hand(multiplier=1, rigged_player_hand=self.rigged_player_hand, rigged_dealer_card=self.rigged_dealer_card)
         debug(C_DEALER + "Dealer shows: " + self.dealer_upcard + RESET)
         debug(C_PLAYER + "Player hand: " + str(self._get_active_hand().hand) + RESET)
         self.hand_multipliers = multipliers.default_multiplier()
