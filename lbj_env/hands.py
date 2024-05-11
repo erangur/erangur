@@ -10,7 +10,7 @@ class Action(Enum):
     SPLIT = 'split'
 
 class Hand():
-    def _init_(self, hand, is_doubled = False, is_active = True, is_split = False):
+    def __init__(self, hand, is_doubled = False, is_active = True, is_split = False):
         self.hand = hand
         self.is_doubled = is_doubled
         self.is_active = is_active
