@@ -28,15 +28,17 @@ def debug(msg):
 
 class GameAI:
     def __init__(self, rigged_player_hand=None, rigged_dealer_card=None):
-        self.reset(rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
+        self.hand_multipliers = multipliers.default_multiplier()
+        # self.reset(rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
 
     def reset(self, rigged_player_hand=None, rigged_dealer_card=None):
         self._new_hand(multiplier=1, rigged_player_hand=rigged_player_hand, rigged_dealer_card=rigged_dealer_card)
         debug(C_DEALER + "Dealer shows: " + self.dealer_upcard + RESET)
+        debug(C_PLAYER + "Player hand: " + str(self._get_active_hand().hand) + RESET)
         self.hand_multipliers = multipliers.default_multiplier()
         debug("Chosen multipliers: " + str(self.hand_multipliers))
         self.reward = 0
-        return self._get_state()
+        return self._get_state(), self._get_active_hand().get_choices()
 
     def _new_hand(self, multiplier=1, rigged_player_hand=None, rigged_dealer_card=None):
         if rigged_player_hand:
@@ -99,7 +101,7 @@ class GameAI:
 
     def _eval_game(self):
         dealer_value = self._get_dealer_value()
-        hand_cost = BET + sum(BET * (2 if hand.is_doubled() else 1) for hand in self.player_hands)
+        hand_cost = BET + sum(BET * (2 if hand.is_doubled else 1) for hand in self.player_hands)
         next_hand_multiplier = 1
         won_amount = 0
         debug(C_DEALER + "Dealer hand: " + str(dealer_value) + RESET)
@@ -120,7 +122,7 @@ class GameAI:
                 won_amount += BET
                 continue
             
-            won_amount += BET * (2 if hand.is_doubled() else 1) * (self.current_multiplier + 1)
+            won_amount += BET * (2 if hand.is_doubled else 1) * (self.current_multiplier + 1)
             next_hand_multiplier = max(next_hand_multiplier, self.hand_multipliers[max(hand_value, 17)])
             done = False
 

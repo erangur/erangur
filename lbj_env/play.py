@@ -40,8 +40,8 @@ while current_bankroll > 0:
     print(f"\nCurrent Bankroll: ${current_bankroll}")
 
     # Reset and get the initial state
-    state = game.reset()
-    actions = state[3][0]  # Available actions for the first hand
+    state, actions = game.reset()
+    (multipliers, current_multiplier, dealer_upcard, hands_state) = state
 
     done = False
 
