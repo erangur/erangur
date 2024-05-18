@@ -41,7 +41,8 @@ while current_bankroll > 0:
 
     # Reset and get the initial state
     state, actions = game.reset()
-    (multipliers, current_multiplier, dealer_upcard, hands_state) = state
+    print(f"\nInitial State: {state}")
+    # (multipliers, current_multiplier, dealer_upcard, hands_state) = state
 
     done = False
 
