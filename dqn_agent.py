@@ -55,12 +55,13 @@ class DQNAgent:
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         state = torch.FloatTensor(state)
-        q_values = self.model(state)
+        q_values = self.model(state, self.action_size)
         return torch.argmax(q_values).item()
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
         for state, action, _, next_state, done in minibatch:
+            print('susu state 2', state)
             state = torch.FloatTensor(state)
             next_state = torch.FloatTensor(next_state)
             state_tuple = tuple(state.numpy().flatten())
@@ -70,6 +71,9 @@ class DQNAgent:
             if not done:
                 target = avg_reward + self.gamma * torch.max(self.model(next_state)).item()
             target_f = self.model(state).clone().detach()
+            print('target_f', target_f)
+            print('target', target)
+            print('action', action)
             target_f[0, action] = target
             self.optimizer.zero_grad()
             loss = self.criterion(self.model(state), target_f)

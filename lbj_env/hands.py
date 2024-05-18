@@ -28,7 +28,8 @@ class Hand():
        return (self.get_hand_value(), self._is_soft(), self._is_splittable(), self.is_doubled, self.is_active)
 
     def get_hand_value(self):
-        return cards.calculate_hand(self.hand)
+        value = cards.calculate_hand(self.hand)
+        return 22 if value > 21 else value
 
     def is_blackjack(self):
         return self.get_hand_value() == 21 and len(self.hand) == 2 and not self.is_split

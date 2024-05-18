@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.animation import FuncAnimation
 from matplotlib.ticker import MultipleLocator
+from lbj_env.hands import Action
 
 
 
@@ -18,11 +19,8 @@ plot_interval = 200  # Update the plot every 50 episodes
 window_size = 100  # Moving Average
 is_rigged = False
 
-def get_correct_action(player_hand, dealer_upcard):
-    player_total = player_hand[0]
-    is_soft = player_hand[1]
-    is_pair = player_hand[2]
-
+def get_correct_action(dealer_upcard, player_total, is_soft):
+    player_total = int(player_total)
     if is_soft:
         if player_total >= 19:
             return 0  # Stand
@@ -41,7 +39,7 @@ def get_correct_action(player_hand, dealer_upcard):
             return 1  # Hit
 
 env = GameAI(is_rigged)
-state_size = 4
+state_size = 10
 action_size = 2
 agent = DQNAgent(state_size, action_size, neurons=32)
 batch_size = 8
@@ -93,17 +91,20 @@ hand_count = 0
 
 # Training loop
 for e in range(latest_episode, latest_episode+num_episodes):
-    state = env.reset()
+    state, action_space = env.reset()
+    print(state)
     state = np.reshape(state, [1, state_size])
     done = False
     truth_score = 0  # Initialize the truth score for each episode
     while not done:
-        action = agent.act(state)
-        next_state, reward, done = env.play_step(action, True)
+        action_num = agent.act(state)
+        action = action_space[action_num]
+        next_state, reward, done, action_space = env.play_step(action)
         next_state = np.reshape(next_state, [1, state_size])
         
+        print('susu state', state)
         # Compare the action taken by the model with the correct action
-        correct_action = get_correct_action(state[0][:3], state[0][3])
+        correct_action = get_correct_action(state[0][2], state[0][3], state[0][4])
         if action == correct_action:
             truth_score = 1
         else:
@@ -119,7 +120,7 @@ for e in range(latest_episode, latest_episode+num_episodes):
             print (f"agent.epsilon: {agent.epsilon}")
 
 
-        agent.remember(state, action, reward, next_state, done)
+        agent.remember(state, action_num, reward, next_state, done)
         state = next_state
         if done:
             print(f"Episode: {e+1}/{num_episodes+latest_episode}, Score: {env.score}, Truth Score: {truth_score}")
