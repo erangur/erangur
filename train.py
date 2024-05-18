@@ -1,5 +1,7 @@
+import sys
+sys.path.append('/Users/droraharon/Dev/playground/bj-monte/lbj_env')
 import os
-from basicbj import GameAI
+from lbj_env.lbj import GameAI
 from dqn_agent import DQNAgent
 import numpy as np
 import matplotlib.pyplot as plt

@@ -81,14 +81,14 @@ class GameAI:
             next_multiplier, reward, done = self._eval_game()
             self.reward += reward
             if done:
-                return self._get_state(), self.reward, True, []
+                return (self._get_state(), self.reward, True, [])
             else:
                 self._new_hand(multiplier=next_multiplier)
-                return self._get_state(), self.reward, False, self._get_active_hand().get_choices()
+                return (self._get_state(), self.reward, False, self._get_active_hand().get_choices())
         else:
             self.action_space = next_hand.get_choices()
             debug(f"New state is {self._get_state()}")
-            return self._get_state(), self.reward, False, next_hand.get_choices()
+            return (self._get_state(), self.reward, False, next_hand.get_choices())
 
     def _get_active_hand(self):
         for hand in self.player_hands:
