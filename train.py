@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/Users/droraharon/Dev/playground/bj-monte/lbj_env')
+sys.path.append('./lbj_env')
 import os
 from lbj_env.lbj import GameAI
 from dqn_agent import DQNAgent
