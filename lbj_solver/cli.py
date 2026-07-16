@@ -113,8 +113,6 @@ def cmd_query(args):
         print(f"  {a.name:<7} EV = {a.ev:+.4f}{star}")
     print("-" * 56)
     print(f"Optimal: {best.name.upper()}   (round EV incl. fee = {round_ev:+.4f})")
-    print("Note: action EVs exclude the flat per-round fee (constant across "
-          "actions); it does not affect the choice.")
 
 
 def cmd_table(args):
