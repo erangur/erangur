@@ -6,10 +6,10 @@ Examples
   python -m lbj_solver.cli solve
 
   # optimal play for a concrete situation
-  python -m lbj_solver.cli query --hand 10,6 --up 10 --min 3 --set 21:12,BJ:25
+  python -m lbj_solver.cli query --hand 10,6 --up 10 --carry 3 --set 21:12,BJ:25
 
   # full strategy grid for a scenario, deviations from plain blackjack marked *
-  python -m lbj_solver.cli table --min 1 --preset modal
+  python -m lbj_solver.cli table --carry 1 --preset modal
 
   # validate RTP by simulation
   python -m lbj_solver.cli simulate --rounds 500000
@@ -104,8 +104,8 @@ def cmd_query(args):
     cards = parse_hand(args.hand)
     up = parse_card(args.up)
     revealed_set = build_set(parse_set(args.set), preset=args.preset, model=sol.model)
-    actions, best, round_ev = sol.best_action(cards, up, args.min, revealed_set)
-    print(f"Hand {args.hand}  vs dealer {args.up}   multiplier_in={args.min}")
+    actions, best, round_ev = sol.best_action(cards, up, args.carry, revealed_set)
+    print(f"Hand {args.hand}  vs dealer {args.up}   multiplier_in={args.carry}")
     print(f"Revealed multipliers: {describe_set(revealed_set)}")
     print("-" * 56)
     for a in sorted(actions, key=lambda a: -a.ev):
@@ -120,9 +120,9 @@ def cmd_query(args):
 def cmd_table(args):
     sol = get_solution(args)
     revealed_set = build_set(parse_set(args.set), preset=args.preset, model=sol.model)
-    header, rows = strategy_grid(sol, args.min, revealed_set,
+    header, rows = strategy_grid(sol, args.carry, revealed_set,
                                  mark_deviations=not args.no_deviations)
-    print(f"Optimal strategy   multiplier_in={args.min}   "
+    print(f"Optimal strategy   multiplier_in={args.carry}   "
           f"multipliers: {describe_set(revealed_set)}")
     print("Codes: S=stand H=hit D=double P=split   "
           "(* = deviation from plain blackjack)")
@@ -175,14 +175,14 @@ def build_parser():
     common(sp)
     sp.add_argument("--hand", required=True, help="e.g. 10,6 or A,7")
     sp.add_argument("--up", required=True, help="dealer upcard, e.g. 10 or A")
-    sp.add_argument("--min", type=int, default=1, help="carried-in multiplier multiplier_in")
+    sp.add_argument("--carry", type=int, default=1, help="multiplier carried into this round (1 = none)")
     sp.add_argument("--set", default="", help="revealed multipliers e.g. 21:12,BJ:25")
     sp.add_argument("--preset", choices=["min", "max", "modal"], default=None)
     sp.set_defaults(func=cmd_query)
 
     sp = sub.add_parser("table", help="strategy grid for a scenario")
     common(sp)
-    sp.add_argument("--min", type=int, default=1, help="carried-in multiplier multiplier_in")
+    sp.add_argument("--carry", type=int, default=1, help="multiplier carried into this round (1 = none)")
     sp.add_argument("--set", default="", help="revealed multipliers")
     sp.add_argument("--preset", choices=["min", "max", "modal"], default="min")
     sp.add_argument("--no-deviations", action="store_true")
