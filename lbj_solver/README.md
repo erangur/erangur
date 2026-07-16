@@ -49,10 +49,10 @@ python -m lbj_solver.cli <command> [options]
 python -m lbj_solver.cli solve
 
 # Optimal play for a concrete situation
-python -m lbj_solver.cli query --hand 10,6 --up 10 --carry 3 --set 21:12,BJ:25
+python -m lbj_solver.cli query --hand 10,6 --up 10 --carry 3 --tier Mid
 
 # Full strategy grid for a scenario (deviations from plain blackjack marked *)
-python -m lbj_solver.cli table --carry 1 --preset modal
+python -m lbj_solver.cli table --carry 1 --tier modal
 
 # Validate RTP by Monte-Carlo simulation
 python -m lbj_solver.cli simulate --rounds 500000
@@ -63,9 +63,11 @@ python -m lbj_solver.cli carry
 
 - `--hand` / `--up` accept `A J Q K 10 2..9` (e.g. `A,7`).
 - `--carry` is the multiplier you carried into this round (1 = no carry).
-- `--set` is the revealed multiplier set, e.g. `18:4,19:6,20:8,21:12,BJ:25`.
-  Unspecified buckets default to their minimum; `<=17` is always 2.
-- `--preset {min,max,modal}` fills the whole set from the distribution.
+- `--tier` is the revealed multiplier set. Multipliers are drawn as **whole
+  correlated tiers**, never per bucket, so you pick a tier — by name (`Low`,
+  `Low-Mid`, `Mid`, `Mid-High`, `High`, `Nadir`), by its Blackjack multiplier
+  (`6/8/12/15/20/25`), or `min`/`max`/`modal`. There is deliberately no way to
+  set an individual bucket.
 - Rule/model overrides on every command: `--fee`, `--peek-ten`,
   `--split-carry {max,min}`, `--exact`, `--nsets N`, `--refresh`.
 

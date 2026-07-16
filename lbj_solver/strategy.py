@@ -7,7 +7,7 @@ deviates from plain blackjack for the same rules (the deviations are the point).
 """
 
 from .engine import DOUBLE, HIT, SPLIT, STAND
-from .multipliers import BUCKET_RANGES, BUCKETS
+from .multipliers import BUCKETS, tier_by_bj, tier_by_name
 
 # Action -> one-letter code.
 CODE = {STAND: "S", HIT: "H", DOUBLE: "D", SPLIT: "P"}
@@ -43,28 +43,34 @@ def action_code(actions, best):
     return CODE[best.name]
 
 
-def build_set(spec=None, preset=None, model=None):
-    """Construct a revealed set S.
+def resolve_tier(model, spec):
+    """Resolve a revealed set from a tier selector — always a REAL tier.
 
-    ``preset`` selects a whole tier from the menu (sets are correlated, so a
-    per-bucket mix is not a real set): 'min' = lowest, 'max' = highest,
-    'modal' = most probable. ``spec`` overrides individual buckets afterwards.
+    ``spec`` is one of: 'min' | 'max' | 'modal' (the least/most-generous/most-
+    frequent tier), a tier name ('Low'..'Nadir'), or a Blackjack multiplier that
+    identifies a tier (6/8/12/15/20/25). Returns ``(tier_name, revealed_set)``.
+
+    There is deliberately NO way to build a per-bucket mix: multipliers are drawn
+    as correlated sets, so an arbitrary combination is not a state the game emits.
     """
-    revealed_set = {b: BUCKET_RANGES[b][0] for b in BUCKETS}  # default: lowest tier
-    if model is not None and getattr(model, "sets", None):
-        if preset == "max":
-            revealed_set = dict(max(model.sets, key=lambda sp: sp[0]["BJ"])[0])
-        elif preset == "modal":
-            revealed_set = dict(max(model.sets, key=lambda sp: sp[1])[0])
-        else:  # 'min' or None
-            revealed_set = dict(min(model.sets, key=lambda sp: sp[0]["BJ"])[0])
-    elif preset == "max":
-        revealed_set = {b: BUCKET_RANGES[b][-1] for b in BUCKETS}
-    if spec:
-        for b, m in spec.items():
-            revealed_set[b] = m
-    revealed_set["<=17"] = 2
-    return revealed_set
+    spec = str(spec).strip()
+    low = spec.lower()
+    if low == "min":
+        return _tier_of(min(model.sets, key=lambda sp: sp[0]["BJ"])[0])
+    if low == "max":
+        return _tier_of(max(model.sets, key=lambda sp: sp[0]["BJ"])[0])
+    if low == "modal":
+        return _tier_of(max(model.sets, key=lambda sp: sp[1])[0])
+    if low.startswith("bj:") or low.startswith("bj="):
+        spec = spec.split(":" if ":" in spec else "=")[1]
+    if spec.isdigit():
+        return tier_by_bj(int(spec))
+    return tier_by_name(spec)
+
+
+def _tier_of(revealed_set):
+    from .multipliers import tier_name_of
+    return tier_name_of(revealed_set), dict(revealed_set)
 
 
 def strategy_grid(solution, multiplier_in, revealed_set, mark_deviations=True):

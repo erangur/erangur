@@ -22,9 +22,9 @@ import argparse
 import sys
 
 from .config import GameConfig
-from .multipliers import BUCKET_RANGES, BUCKETS, MultiplierModel
+from .multipliers import MultiplierModel
 from .solution import Solution
-from .strategy import (build_set, describe_set, format_grid, strategy_grid)
+from .strategy import (resolve_tier, describe_set, format_grid, strategy_grid)
 
 _RANK = {"A": 11, "J": 10, "Q": 10, "K": 10, "T": 10}
 
@@ -45,18 +45,10 @@ def parse_hand(s):
     return [parse_card(t) for t in s.replace(" ", ",").split(",") if t]
 
 
-def parse_set(spec):
-    """'21:12,BJ:25' or '21=12 BJ=25' -> {'21':12,'BJ':25}."""
-    out = {}
-    if not spec:
-        return out
-    for part in spec.replace(",", " ").split():
-        k, v = part.replace("=", ":").split(":")
-        k = k.strip()
-        if k not in BUCKETS:
-            raise ValueError(f"unknown bucket {k}; valid: {BUCKETS}")
-        out[k] = int(v)
-    return out
+_TIER_HELP = ("revealed multiplier set, chosen as a whole tier (they are drawn "
+              "as correlated sets, never per-bucket): a tier name (Low, Low-Mid, "
+              "Mid, Mid-High, High, Nadir), its Blackjack multiplier "
+              "(6/8/12/15/20/25), or min/max/modal")
 
 
 def make_config(args):
@@ -103,10 +95,10 @@ def cmd_query(args):
     sol = get_solution(args)
     cards = parse_hand(args.hand)
     up = parse_card(args.up)
-    revealed_set = build_set(parse_set(args.set), preset=args.preset, model=sol.model)
+    tier_name, revealed_set = resolve_tier(sol.model, args.tier)
     actions, best, round_ev = sol.best_action(cards, up, args.carry, revealed_set)
-    print(f"Hand {args.hand}  vs dealer {args.up}   multiplier_in={args.carry}")
-    print(f"Revealed multipliers: {describe_set(revealed_set)}")
+    print(f"Hand {args.hand}  vs dealer {args.up}   carry={args.carry}")
+    print(f"Revealed tier: {tier_name}  ({describe_set(revealed_set)})")
     print("-" * 56)
     for a in sorted(actions, key=lambda a: -a.ev):
         star = "  <-- OPTIMAL" if a.name == best.name else ""
@@ -117,11 +109,11 @@ def cmd_query(args):
 
 def cmd_table(args):
     sol = get_solution(args)
-    revealed_set = build_set(parse_set(args.set), preset=args.preset, model=sol.model)
+    tier_name, revealed_set = resolve_tier(sol.model, args.tier)
     header, rows = strategy_grid(sol, args.carry, revealed_set,
                                  mark_deviations=not args.no_deviations)
-    print(f"Optimal strategy   multiplier_in={args.carry}   "
-          f"multipliers: {describe_set(revealed_set)}")
+    print(f"Optimal strategy   carry={args.carry}   "
+          f"tier: {tier_name} ({describe_set(revealed_set)})")
     print("Codes: S=stand H=hit D=double P=split   "
           "(* = deviation from plain blackjack)")
     print()
@@ -174,15 +166,13 @@ def build_parser():
     sp.add_argument("--hand", required=True, help="e.g. 10,6 or A,7")
     sp.add_argument("--up", required=True, help="dealer upcard, e.g. 10 or A")
     sp.add_argument("--carry", type=int, default=1, help="multiplier carried into this round (1 = none)")
-    sp.add_argument("--set", default="", help="revealed multipliers e.g. 21:12,BJ:25")
-    sp.add_argument("--preset", choices=["min", "max", "modal"], default=None)
+    sp.add_argument("--tier", default="modal", help=_TIER_HELP)
     sp.set_defaults(func=cmd_query)
 
     sp = sub.add_parser("table", help="strategy grid for a scenario")
     common(sp)
     sp.add_argument("--carry", type=int, default=1, help="multiplier carried into this round (1 = none)")
-    sp.add_argument("--set", default="", help="revealed multipliers")
-    sp.add_argument("--preset", choices=["min", "max", "modal"], default="min")
+    sp.add_argument("--tier", default="modal", help=_TIER_HELP)
     sp.add_argument("--no-deviations", action="store_true")
     sp.set_defaults(func=cmd_table)
 
@@ -197,7 +187,10 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except ValueError as e:
+        sys.exit(f"error: {e}")
 
 
 if __name__ == "__main__":

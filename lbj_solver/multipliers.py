@@ -58,6 +58,30 @@ def load_bj_histogram(path=None):
     return dict(counts)
 
 
+def tier_by_bj(bj):
+    """The full tier set whose Blackjack multiplier is ``bj`` (unique key)."""
+    for name, tier in TIERS:
+        if tier["BJ"] == bj:
+            return name, dict(tier)
+    valid = [tier["BJ"] for _, tier in TIERS]
+    raise ValueError(f"no tier with BJ={bj}; valid BJ values: {valid}")
+
+
+def tier_by_name(name):
+    for tname, tier in TIERS:
+        if tname.lower() == name.lower():
+            return tname, dict(tier)
+    raise ValueError(f"unknown tier '{name}'; valid: {[n for n, _ in TIERS]}")
+
+
+def tier_name_of(revealed_set):
+    """Name of the tier matching a set, or 'custom' if it isn't a real tier."""
+    for name, tier in TIERS:
+        if all(revealed_set.get(b) == tier[b] for b in tier):
+            return name
+    return "custom"
+
+
 def bucket_of(total, natural):
     """Which bucket a *winning* final hand falls into."""
     if natural:
