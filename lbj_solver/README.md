@@ -48,8 +48,14 @@ python -m lbj_solver.cli <command> [options]
 # One-time precompute of carry values (cached to data/solution.json)
 python -m lbj_solver.cli solve
 
+# Interactive, prompt-by-prompt (asks for hand, upcard, carry, and the set)
+python -m lbj_solver.cli wizard
+
 # Optimal play for a concrete situation
-python -m lbj_solver.cli query --hand 10,6 --up 10 --carry 3 --tier Mid
+python -m lbj_solver.cli query --hand 10,6 --up 10 --carry 3 --tier 12
+
+# Omit ONE of --up/--carry/--tier to sweep it (>=2 of the three required)
+python -m lbj_solver.cli query --hand 10,6 --carry 1 --tier 6   # -> up 2-6 STAND, 7-A HIT
 
 # Full strategy grid for a scenario (deviations from plain blackjack marked *)
 python -m lbj_solver.cli table --carry 1 --tier modal
@@ -64,10 +70,9 @@ python -m lbj_solver.cli carry
 - `--hand` / `--up` accept `A J Q K 10 2..9` (e.g. `A,7`).
 - `--carry` is the multiplier you carried into this round (1 = no carry).
 - `--tier` is the revealed multiplier set. Multipliers are drawn as **whole
-  correlated tiers**, never per bucket, so you pick a tier — by name (`Low`,
-  `Low-Mid`, `Mid`, `Mid-High`, `High`, `Nadir`), by its Blackjack multiplier
-  (`6/8/12/15/20/25`), or `min`/`max`/`modal`. There is deliberately no way to
-  set an individual bucket.
+  correlated sets**, never per bucket, so you pick a set by its **Blackjack
+  multiplier** (`6/8/12/15/20/25`) or `min`/`max`/`modal`. There is deliberately
+  no way to set an individual bucket. (Or just run `wizard` and pick from a menu.)
 - Rule/model overrides on every command: `--fee`, `--peek-ten`,
   `--split-carry {max,min}`, `--exact`, `--nsets N`, `--refresh`.
 

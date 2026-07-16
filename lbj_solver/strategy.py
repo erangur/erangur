@@ -7,7 +7,7 @@ deviates from plain blackjack for the same rules (the deviations are the point).
 """
 
 from .engine import DOUBLE, HIT, SPLIT, STAND
-from .multipliers import BUCKETS, tier_by_bj, tier_by_name
+from .multipliers import BUCKETS, TIER_BJ_VALUES, tier_by_bj
 
 # Action -> one-letter code.
 CODE = {STAND: "S", HIT: "H", DOUBLE: "D", SPLIT: "P"}
@@ -44,33 +44,28 @@ def action_code(actions, best):
 
 
 def resolve_tier(model, spec):
-    """Resolve a revealed set from a tier selector — always a REAL tier.
+    """Resolve a revealed set from a selector — always a REAL set from the menu.
 
     ``spec`` is one of: 'min' | 'max' | 'modal' (the least/most-generous/most-
-    frequent tier), a tier name ('Low'..'Nadir'), or a Blackjack multiplier that
-    identifies a tier (6/8/12/15/20/25). Returns ``(tier_name, revealed_set)``.
+    frequent set), or a Blackjack multiplier that identifies a set
+    (6/8/12/15/20/25). Returns the ``revealed_set`` dict.
 
     There is deliberately NO way to build a per-bucket mix: multipliers are drawn
     as correlated sets, so an arbitrary combination is not a state the game emits.
     """
-    spec = str(spec).strip()
-    low = spec.lower()
-    if low == "min":
-        return _tier_of(min(model.sets, key=lambda sp: sp[0]["BJ"])[0])
-    if low == "max":
-        return _tier_of(max(model.sets, key=lambda sp: sp[0]["BJ"])[0])
-    if low == "modal":
-        return _tier_of(max(model.sets, key=lambda sp: sp[1])[0])
-    if low.startswith("bj:") or low.startswith("bj="):
-        spec = spec.split(":" if ":" in spec else "=")[1]
+    spec = str(spec).strip().lower()
+    if spec == "min":
+        return dict(min(model.sets, key=lambda sp: sp[0]["BJ"])[0])
+    if spec == "max":
+        return dict(max(model.sets, key=lambda sp: sp[0]["BJ"])[0])
+    if spec == "modal":
+        return dict(max(model.sets, key=lambda sp: sp[1])[0])
+    if spec.startswith("bj:") or spec.startswith("bj="):
+        spec = spec[3:]
     if spec.isdigit():
         return tier_by_bj(int(spec))
-    return tier_by_name(spec)
-
-
-def _tier_of(revealed_set):
-    from .multipliers import tier_name_of
-    return tier_name_of(revealed_set), dict(revealed_set)
+    raise ValueError(f"--tier must be a Blackjack multiplier "
+                     f"{list(TIER_BJ_VALUES)} or min/max/modal")
 
 
 def strategy_grid(solution, multiplier_in, revealed_set, mark_deviations=True):

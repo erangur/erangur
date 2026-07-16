@@ -23,25 +23,24 @@ from collections import Counter
 BUCKETS = ("<=17", "18", "19", "20", "21", "BJ")
 
 # The correlated menu of multiplier sets (from lbj_env/multipliers.py tiers).
-# Each tier is identified by its Blackjack multiplier.
+# A set is identified by its Blackjack multiplier (unique across the menu).
 TIERS = [
-    ("Low",      {"<=17": 2, "18": 2, "19": 3, "20": 4,  "21": 5,  "BJ": 6}),
-    ("Low-Mid",  {"<=17": 2, "18": 3, "19": 4, "20": 5,  "21": 6,  "BJ": 8}),
-    ("Mid",      {"<=17": 2, "18": 3, "19": 4, "20": 5,  "21": 8,  "BJ": 12}),
-    ("Mid-High", {"<=17": 2, "18": 4, "19": 5, "20": 6,  "21": 10, "BJ": 15}),
-    ("High",     {"<=17": 2, "18": 5, "19": 6, "20": 8,  "21": 12, "BJ": 20}),
-    ("Nadir",    {"<=17": 2, "18": 5, "19": 8, "20": 10, "21": 15, "BJ": 25}),
+    {"<=17": 2, "18": 2, "19": 3, "20": 4,  "21": 5,  "BJ": 6},
+    {"<=17": 2, "18": 3, "19": 4, "20": 5,  "21": 6,  "BJ": 8},
+    {"<=17": 2, "18": 3, "19": 4, "20": 5,  "21": 8,  "BJ": 12},
+    {"<=17": 2, "18": 4, "19": 5, "20": 6,  "21": 10, "BJ": 15},
+    {"<=17": 2, "18": 5, "19": 6, "20": 8,  "21": 12, "BJ": 20},
+    {"<=17": 2, "18": 5, "19": 8, "20": 10, "21": 15, "BJ": 25},
 ]
-# BJ multiplier -> tier index (the histogram key).
-_BJ_TO_TIER = {tier["BJ"]: i for i, (_, tier) in enumerate(TIERS)}
+# Blackjack multipliers, in menu order (the identifiers for the sets).
+TIER_BJ_VALUES = tuple(tier["BJ"] for tier in TIERS)
 
-# Observed per-bucket ranges (min..max across the menu) — used only for parsing
-# / validating user-supplied sets, not for the distribution.
-BUCKET_RANGES = {b: tuple(sorted({tier[b] for _, tier in TIERS})) for b in BUCKETS}
+# Observed per-bucket ranges (min..max across the menu).
+BUCKET_RANGES = {b: tuple(sorted({tier[b] for tier in TIERS})) for b in BUCKETS}
 
 # Every multiplier that can ever be carried forward (+ 1 = no carry). State space
 # of the carry MDP.
-CARRY_VALUES = tuple(sorted({1} | {m for _, tier in TIERS for m in tier.values()}))
+CARRY_VALUES = tuple(sorted({1} | {m for tier in TIERS for m in tier.values()}))
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
@@ -59,27 +58,11 @@ def load_bj_histogram(path=None):
 
 
 def tier_by_bj(bj):
-    """The full tier set whose Blackjack multiplier is ``bj`` (unique key)."""
-    for name, tier in TIERS:
+    """The full set whose Blackjack multiplier is ``bj`` (its unique identifier)."""
+    for tier in TIERS:
         if tier["BJ"] == bj:
-            return name, dict(tier)
-    valid = [tier["BJ"] for _, tier in TIERS]
-    raise ValueError(f"no tier with BJ={bj}; valid BJ values: {valid}")
-
-
-def tier_by_name(name):
-    for tname, tier in TIERS:
-        if tname.lower() == name.lower():
-            return tname, dict(tier)
-    raise ValueError(f"unknown tier '{name}'; valid: {[n for n, _ in TIERS]}")
-
-
-def tier_name_of(revealed_set):
-    """Name of the tier matching a set, or 'custom' if it isn't a real tier."""
-    for name, tier in TIERS:
-        if all(revealed_set.get(b) == tier[b] for b in tier):
-            return name
-    return "custom"
+            return dict(tier)
+    raise ValueError(f"no set with BJ={bj}; valid BJ values: {list(TIER_BJ_VALUES)}")
 
 
 def bucket_of(total, natural):
@@ -107,7 +90,7 @@ class MultiplierModel:
         bj_hist = bj_hist or load_bj_histogram()
         total = sum(bj_hist.values())
         sets = []
-        for _, tier in TIERS:
+        for tier in TIERS:
             count = bj_hist.get(tier["BJ"], 0)
             if count:
                 sets.append((dict(tier), count / total))
