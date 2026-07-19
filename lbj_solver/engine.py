@@ -263,6 +263,138 @@ class Evaluator:
         # No-peek dealer BJ: both hands lose their stake.
         return (1 - q) * total + q * (-2.0)
 
+    # ---- mid-hand node (solo, no split) ---------------------------------
+    def node_actions(self, total, soft, can_double, upcard, stake=1):
+        """Evaluated actions at a solo decision node (stand / hit [/ double]).
+
+        Like ``evaluate`` but for a hand already in progress: no natural and no
+        split branch. Returns ``(actions, best)`` with fee-excluded EVs. Used to
+        drive the interactive wizard card by card, and for the first hand of a
+        split (played under the solo policy, exactly as the engine's split EV
+        and the simulator assume).
+        """
+        ctx = self._ctx(upcard)
+        acts = [Action(STAND, self._stand_value(total, stake, ctx))]
+
+        hit = 0.0
+        for r in RANKS:
+            p = RANK_PROBS_F[r]
+            nt, ns, bust = add_card(total, soft, r)
+            hit += p * ((-stake) if bust else self._hand_value(nt, ns, False, stake, upcard))
+        acts.append(Action(HIT, hit))
+
+        if can_double and self.cfg.double_any_two:
+            dbl = 0.0
+            for r in RANKS:
+                p = RANK_PROBS_F[r]
+                nt, ns, bust = add_card(total, soft, r)
+                dbl += p * ((-2 * stake) if bust else self._stand_value(nt, 2 * stake, ctx))
+            acts.append(Action(DOUBLE, dbl))
+
+        best = max(acts, key=lambda a: a.ev)
+        return acts, best
+
+    # ---- second split hand, coupled to the sibling's final total --------
+    def _sibling_carry(self, partner_total):
+        """``(compare_total, multiplier)`` for the already-played sibling.
+
+        ``partner_total`` is the sibling hand's final total (int) or ``None`` if
+        it busted (a busted sibling never wins, so it carries nothing). Returns
+        ``None`` for a busted / absent sibling.
+        """
+        if partner_total is None:
+            return None
+        m = self.model.multiplier_for(self.revealed_set, partner_total, False)
+        return partner_total, m
+
+    def _joint_lose_value(self, upcard, sibling):
+        """EV when THIS hand loses (busts), given the fixed ``sibling``.
+
+        Constant across this hand's total: only the sibling's own carry (when it
+        beats the dealer) survives.
+        """
+        ctx = self._ctx(upcard)
+        cond, q = ctx["cond"], ctx["p_in_play"]
+        total = 0.0
+        for d, pd in cond.items():
+            if pd == 0:
+                continue
+            val = -1.0
+            if sibling is not None and (d == "bust" or sibling[0] > d):
+                val += self.carry_values[sibling[1]]
+            total += pd * val
+        return (1 - q) * total + q * (-1.0)
+
+    def _joint_stand_value(self, t, upcard, sibling):
+        """EV of standing at ``t`` with the sibling hand fixed.
+
+        The carry both hands can earn is combined per ``cfg.split_carry_rule``
+        (max by default), so the sibling's final total shifts this hand's value:
+        a sibling that already secured a big multiplier removes this hand's
+        incentive to chase one. With ``sibling is None`` this reduces exactly to
+        the solo ``_stand_value``.
+        """
+        ctx = self._ctx(upcard)
+        cond, q = ctx["cond"], ctx["p_in_play"]
+        m2 = self.model.multiplier_for(self.revealed_set, t, False)
+        take_max = self.cfg.split_carry_rule != "min"
+        total = 0.0
+        for d, pd in cond.items():
+            if pd == 0:
+                continue
+            sib_win = sibling is not None and (d == "bust" or sibling[0] > d)
+            if d == "bust" or t > d:               # this hand wins
+                val = self.multiplier_in
+                if sib_win:
+                    m1 = sibling[1]
+                    mm = (m1 if m1 >= m2 else m2) if take_max else (m1 if m1 <= m2 else m2)
+                    val += self.carry_values[mm]
+                else:
+                    val += self.carry_values[m2]
+            elif t == d:                           # push
+                val = self.carry_values[sibling[1]] if sib_win else 0.0
+            else:                                  # this hand loses
+                val = -1.0 + (self.carry_values[sibling[1]] if sib_win else 0.0)
+            total += pd * val
+        return (1 - q) * total + q * (-1.0)
+
+    def _joint_hand_value(self, total, soft, upcard, sibling, memo):
+        key = (total, soft)
+        cached = memo.get(key)
+        if cached is not None:
+            return cached
+        best = self._joint_stand_value(total, upcard, sibling)
+        lose = self._joint_lose_value(upcard, sibling)
+        hit = 0.0
+        for r in RANKS:
+            p = RANK_PROBS_F[r]
+            nt, ns, bust = add_card(total, soft, r)
+            hit += p * (lose if bust else self._joint_hand_value(nt, ns, upcard, sibling, memo))
+        if hit > best:
+            best = hit
+        memo[key] = best
+        return best
+
+    def joint_node_actions(self, total, soft, upcard, partner_total):
+        """Actions (stand / hit) for the SECOND split hand, coupled to the first.
+
+        ``partner_total`` is the finished first hand's final total (int) or
+        ``None`` if it busted. No double-after-split, so only stand / hit are
+        offered. Returns ``(actions, best)``.
+        """
+        sibling = self._sibling_carry(partner_total)
+        memo = {}
+        stand = self._joint_stand_value(total, upcard, sibling)
+        lose = self._joint_lose_value(upcard, sibling)
+        hit = 0.0
+        for r in RANKS:
+            p = RANK_PROBS_F[r]
+            nt, ns, bust = add_card(total, soft, r)
+            hit += p * (lose if bust else self._joint_hand_value(nt, ns, upcard, sibling, memo))
+        acts = [Action(STAND, stand), Action(HIT, hit)]
+        best = max(acts, key=lambda a: a.ev)
+        return acts, best
+
     # ---- top-level: evaluate a starting hand ----------------------------
     def evaluate(self, cards, upcard):
         """Evaluate a starting hand (list of ranks) vs ``upcard``.

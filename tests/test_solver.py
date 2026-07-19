@@ -103,6 +103,50 @@ def test_split_arithmetic():
               abs(ev._split_value(pair, up) - two) < 1e-12)
 
 
+def test_node_actions():
+    print("node_actions (mid-hand solo evaluation):")
+    ev = _neutral_ev()
+    # For a 2-card non-pair hand, node_actions must reproduce evaluate's
+    # stand/hit/double EVs exactly (it only drops the split branch).
+    for cards, up in [([10, 6], 9), ([7, 4], 5), ([A, 6], 3)]:
+        by_eval = {a.name: a.ev for a in ev.evaluate(cards, up)[0] if a.name != "split"}
+        acts, _ = ev.node_actions(*hand_from_cards(cards), True, up)
+        by_node = {a.name: a.ev for a in acts}
+        check(f"node=eval {cards} v{up}",
+              max(abs(by_eval[k] - by_node[k]) for k in by_node) < 1e-12)
+
+
+def test_joint_split_hand():
+    print("joint second-split-hand coupling:")
+    # A busted/absent sibling must reduce the joint value to the solo value.
+    model = MultiplierModel.empirical()
+    sol = Solution.solve(model, GameConfig(), n_sets=40, seed=3)
+    ev = sol.evaluator(1, SAMPLE_SET)
+    ctx = ev._ctx(9)
+    check("joint(None) stand == solo stand",
+          all(abs(ev._joint_stand_value(t, 9, None) - ev._stand_value(t, 1, ctx)) < 1e-12
+              for t in range(12, 22)))
+    solo = {a.name: a.ev for a in ev.node_actions(16, False, False, 9)[0]}
+    joint = {a.name: a.ev for a in ev.joint_node_actions(16, False, 9, None)[0]}
+    check("joint(None) node == solo node",
+          all(abs(solo[k] - joint[k]) < 1e-12 for k in joint))
+
+    # A winning-capable sibling never lowers this hand's stand EV.
+    sib20 = ev._sibling_carry(20)
+    check("sibling never hurts stand EV",
+          all(ev._joint_stand_value(t, 9, sib20) >= ev._joint_stand_value(t, 9, None) - 1e-12
+              for t in range(12, 22)))
+
+    # Flagship coupling: 17 vs dealer 9, base carry, low-tier set. A sibling
+    # already at 20 (secured a 4x carry) makes standing right; a sibling at 18
+    # leaves room to chase, so hitting the stiff 17 becomes optimal.
+    ev6 = sol.evaluator(1, {"<=17": 2, "18": 2, "19": 3, "20": 4, "21": 5, "BJ": 6})
+    best_hi = ev6.joint_node_actions(17, False, 9, 20)[1].name
+    best_lo = ev6.joint_node_actions(17, False, 9, 18)[1].name
+    check("17v9 stands behind a 20 sibling", best_hi == "stand")
+    check("17v9 hits behind an 18 sibling", best_lo == "hit")
+
+
 def test_carry_convergence():
     print("carry value iteration:")
     model = MultiplierModel.empirical()
@@ -134,7 +178,8 @@ def test_sim_consistency():
 
 if __name__ == "__main__":
     for t in [test_cards, test_dealer, test_basic_strategy, test_house_edge,
-              test_split_arithmetic, test_carry_convergence, test_sim_consistency]:
+              test_split_arithmetic, test_node_actions, test_joint_split_hand,
+              test_carry_convergence, test_sim_consistency]:
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)

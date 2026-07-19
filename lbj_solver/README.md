@@ -47,7 +47,11 @@ python -m lbj_solver.cli <command> [options]
 # One-time precompute of carry values (cached to data/solution.json)
 python -m lbj_solver.cli solve
 
-# Interactive, prompt-by-prompt (asks for hand, upcard, carry, and the set)
+# Interactive, continuous session. Asks the starting carry ONCE, then each
+# round: the revealed set, your hand, the upcard; it suggests the optimal play,
+# asks what you actually did and which card came (splits played out hand by
+# hand), asks the dealer's result, then carries the earned multiplier straight
+# into the next round. Ctrl-D to quit.
 python -m lbj_solver.cli wizard
 
 # Optimal play for a concrete situation
@@ -74,6 +78,17 @@ python -m lbj_solver.cli carry
   no way to set an individual bucket. (Or just run `wizard` and pick from a menu.)
 - Rule/model overrides on every command: `--fee`, `--peek-ten`,
   `--split-carry {max,min}`, `--exact`, `--nsets N`, `--refresh`.
+
+### Split hands in the wizard are coupled
+
+When you split, the wizard plays hand 1 first, then hand 2 — and hand 2's advice
+**accounts for hand 1's final total**. Because the carry forward combines the two
+hands (`max` by default), a first hand that already secured a big multiplier
+removes the second hand's incentive to chase one. Concretely, at 17 vs a dealer
+9 on a low set: if hand 1 finished on **20** the second hand should **stand**,
+but if hand 1 finished on **18** it should **hit** the stiff 17 to reach for a
+bigger carry. (The engine's aggregate split EV still assumes both hands play the
+solo policy; only the interactive wizard exploits the sibling's known total.)
 
 ---
 
