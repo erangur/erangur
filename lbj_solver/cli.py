@@ -21,7 +21,9 @@ Examples
 import argparse
 import sys
 
+from .cards import add_card, hand_from_cards, is_natural
 from .config import GameConfig
+from .engine import DOUBLE, HIT, SPLIT, STAND
 from .multipliers import MultiplierModel
 from .solution import Solution
 from .strategy import (resolve_tier, describe_set, format_grid, strategy_grid)
@@ -200,18 +202,68 @@ def _ask(prompt, parse, default=None):
             print(f"  ! {e}")
 
 
+_ACTION_ALIASES = {
+    "s": STAND, "stand": STAND, "h": HIT, "hit": HIT,
+    "d": DOUBLE, "double": DOUBLE, "p": SPLIT, "split": SPLIT,
+}
+
+
+def _card_label(c):
+    return "A" if c == 11 else str(c)
+
+
+def _hand_str(cards):
+    return ",".join(_card_label(c) for c in cards)
+
+
+def _parse_action(legal):
+    """Return a parser accepting any action name in ``legal`` (or its initial)."""
+    def parse(raw):
+        a = _ACTION_ALIASES.get(raw.strip().lower())
+        if a is None or a not in legal:
+            raise ValueError(f"choose one of: {', '.join(legal)}")
+        return a
+    return parse
+
+
+def _show_actions(actions, best, title):
+    print(f"\n{title}")
+    print("-" * 56)
+    for a in sorted(actions, key=lambda a: -a.ev):
+        star = "  <-- SUGGESTED" if a.name == best.name else ""
+        print(f"  {a.name:<7} EV = {a.ev:+.4f}{star}")
+    print("-" * 56)
+    print(f"Suggested: {best.name.upper()}")
+
+
+def parse_dealer(raw):
+    """Parse a dealer final total: a number, or 'bust' (a number >21 is a bust)."""
+    raw = raw.strip().lower()
+    if raw in ("bust", "b", "busted", "x"):
+        return "bust"
+    n = int(raw)
+    if n > 21:
+        return "bust"      # over 21 is a bust
+    if not 2 <= n <= 21:
+        raise ValueError("dealer total must be 2-21, or 'bust'")
+    return n
+
+
+def _hand_outcome(total, dealer_final):
+    """'win' / 'push' / 'loss' for a standing player ``total`` vs the dealer."""
+    if total is None:
+        return "loss"
+    if dealer_final == "bust" or total > dealer_final:
+        return "win"
+    if total == dealer_final:
+        return "push"
+    return "loss"
+
+
 def cmd_wizard(args):
     from .multipliers import TIERS, TIER_BJ_VALUES
     sol = get_solution(args)
-    print("Lightning Blackjack — interactive strategy wizard")
-    print("(press Enter at a prompt to accept the [default])\n")
-
-    cards = _ask("Your hand (e.g. 10,6 or A,7): ", parse_hand)
-    up = _ask("Dealer upcard (2-10, A): ", parse_card)
-    carry = _ask("Carried-in multiplier [1 = none]: ", int, default=1)
-
-    print("\nRevealed multipliers this round — pick the set by its Blackjack "
-          "multiplier:")
+    print("Lightning Blackjack wizard. Ctrl-D to quit.\n")
     for i, tier in enumerate(TIERS, 1):
         body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
         print(f"  {i})  BJ {tier['BJ']:>2}x   ({body})")
@@ -224,10 +276,146 @@ def cmd_wizard(args):
             return next(dict(t) for t in TIERS if t["BJ"] == n)
         raise ValueError(f"choose 1-{len(TIERS)} or a BJ value {list(TIER_BJ_VALUES)}")
 
-    revealed_set = _ask("Choice: ", pick)
-    hand_label = ",".join("A" if c == 11 else str(c) for c in cards)
-    up_label = "A" if up == 11 else str(up)
-    _print_decision(sol, cards, up, carry, revealed_set, hand_label, up_label)
+    carry = _ask("Starting carry [1]: ", int, default=1)
+
+    round_no = 1
+    try:
+        while True:
+            print(f"\n----- Round {round_no}  (carry {carry}x) -----")
+            revealed_set = _ask("Set (# or BJ mult): ", pick)
+            cards = _ask("Hand: ", parse_hand)
+            up = _ask("Dealer up: ", parse_card)
+            ev = sol.evaluator(carry, revealed_set)
+            hands = _interactive_round(ev, cards, up)
+            carry = _resolve_round(ev, hands)
+            print(f"  carry -> {carry}x")
+            round_no += 1
+    except (EOFError, KeyboardInterrupt):
+        print("\nbye")
+
+
+def _interactive_round(ev, cards, up):
+    """Play one round interactively. Returns ``[(final_total_or_None, natural)]``
+    — one entry per hand (two after a split)."""
+    if is_natural(cards):
+        print(f"  {_hand_str(cards)} = natural blackjack.")
+        return [(21, True)]
+
+    total, soft = hand_from_cards(cards)
+    actions, best, _ = ev.evaluate(cards, up)
+    _show_actions(actions, best,
+                  f"Your hand {_hand_str(cards)} (total {total}) vs dealer "
+                  f"{_up_label(up)}")
+    chosen = _ask("What did you choose? ", _parse_action([a.name for a in actions]))
+
+    if chosen == SPLIT:
+        return _play_split(ev, cards[0], up)
+    if chosen == STAND:
+        print(f"  You stand at {total}.")
+        return [(total, False)]
+    if chosen == DOUBLE:
+        c = _ask("Card drawn on the double? ", parse_card)
+        nt, ns, bust = add_card(total, soft, c)
+        print(f"  -> {_hand_str(cards + [c])} = {'BUST' if bust else nt}")
+        return [(None if bust else nt, False)]
+    # hit
+    c = _ask("Card drawn? ", parse_card)
+    nt, ns, bust = add_card(total, soft, c)
+    if bust:
+        print(f"  -> {_hand_str(cards + [c])} = {nt} BUST")
+        return [(None, False)]
+    return [(_continue_solo_hand(ev, cards + [c], up), False)]
+
+
+def _continue_solo_hand(ev, cards, up):
+    """Play a single hand out card by card after the first hit. Returns the
+    final total, or None if it busted."""
+    total, soft = hand_from_cards(cards)
+    while True:
+        if total == 21:
+            print(f"  {_hand_str(cards)} = 21 — you stand.")
+            return 21
+        actions, best = ev.node_actions(total, soft, False, up)  # no double after a hit
+        _show_actions(actions, best,
+                      f"Hand {_hand_str(cards)} (total {total}) vs dealer "
+                      f"{_up_label(up)}")
+        chosen = _ask("What did you choose? ", _parse_action([a.name for a in actions]))
+        if chosen == STAND:
+            print(f"  You stand at {total}.")
+            return total
+        c = _ask("Card drawn? ", parse_card)
+        cards = cards + [c]
+        total, soft, bust = add_card(total, soft, c)
+        if bust:
+            print(f"  -> {_hand_str(cards)} = {total} BUST")
+            return None
+
+
+def _play_split(ev, pair_rank, up):
+    """Play both post-split hands in order; hand 2 is coupled to hand 1's total.
+    Returns ``[(t1, False), (t2, False)]``."""
+    print(f"  split {_card_label(pair_rank)}s")
+    t1 = _play_split_hand(ev, pair_rank, up, 1, partner="solo")
+    t2 = _play_split_hand(ev, pair_rank, up, 2, partner=t1)
+    return [(t1, False), (t2, False)]
+
+
+def _play_split_hand(ev, pair_rank, up, hand_no, partner):
+    """Play one post-split hand. ``partner`` is 'solo' (hand 1) or hand 1's final
+    total / None (hand 2). Returns this hand's final total, or None if it busted.
+    """
+    if pair_rank == 11 and ev.cfg.split_aces_one_card:
+        c = _ask(f"Hand {hand_no} card: ", parse_card)
+        total, _ = hand_from_cards([11, c])
+        print(f"  Hand {hand_no}: A,{_card_label(c)} = {total}")
+        return total
+
+    c = _ask(f"Hand {hand_no} first card: ", parse_card)
+    cards = [pair_rank, c]
+    total, soft = hand_from_cards(cards)
+    while True:
+        if total == 21:
+            print(f"  Hand {hand_no} {_hand_str(cards)} = 21 — stands.")
+            return 21
+        if partner == "solo":
+            actions, best = ev.node_actions(total, soft, False, up)  # no DAS
+        else:
+            actions, best = ev.joint_node_actions(total, soft, up, partner)
+        _show_actions(actions, best,
+                      f"Hand {hand_no} {_hand_str(cards)} (total {total}) vs "
+                      f"dealer {_up_label(up)}")
+        chosen = _ask("What did you choose? ", _parse_action([a.name for a in actions]))
+        if chosen == STAND:
+            print(f"  Hand {hand_no} stands at {total}.")
+            return total
+        c = _ask("Card drawn? ", parse_card)
+        cards = cards + [c]
+        total, soft, bust = add_card(total, soft, c)
+        if bust:
+            print(f"  Hand {hand_no} {_hand_str(cards)} = {total} BUST.")
+            return None
+
+
+def _resolve_round(ev, hands):
+    """Ask the dealer's result, report each hand, and return the carry forward."""
+    if all(t is None for t, _ in hands):
+        print("  all bust -> loss")
+        return 1
+
+    dealer = _ask("Dealer: ", parse_dealer)
+    take_max = ev.cfg.split_carry_rule != "min"
+    win_mults = []
+    for i, (total, natural) in enumerate(hands, 1):
+        label = f"Hand {i}" if len(hands) > 1 else "Result"
+        outcome = _hand_outcome(total, dealer)
+        if outcome == "win":
+            m = ev.model.multiplier_for(ev.revealed_set, total, natural)
+            win_mults.append(m)
+            print(f"  {label}: win ({m}x)")
+        else:
+            print(f"  {label}: {outcome}")
+
+    return (max if take_max else min)(win_mults) if win_mults else 1
 
 
 def cmd_simulate(args):

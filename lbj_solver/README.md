@@ -5,9 +5,8 @@ answers the only question that matters: **given your hand, the dealer upcard, th
 multiplier you carried in, and the multiplier set revealed this round, what is
 the mathematically optimal play?**
 
-Unlike the old DQN attempt, this **computes** the optimum with dynamic
-programming (the model is fully known), so results are exact and reproducible —
-not approximated.
+It **computes** the optimum with dynamic programming (the model is fully known),
+so results are exact and reproducible — not approximated.
 
 ---
 
@@ -48,7 +47,11 @@ python -m lbj_solver.cli <command> [options]
 # One-time precompute of carry values (cached to data/solution.json)
 python -m lbj_solver.cli solve
 
-# Interactive, prompt-by-prompt (asks for hand, upcard, carry, and the set)
+# Interactive, continuous session. Asks the starting carry ONCE, then each
+# round: the revealed set, your hand, the upcard; it suggests the optimal play,
+# asks what you actually did and which card came (splits played out hand by
+# hand), asks the dealer's result, then carries the earned multiplier straight
+# into the next round. Ctrl-D to quit.
 python -m lbj_solver.cli wizard
 
 # Optimal play for a concrete situation
@@ -75,6 +78,10 @@ python -m lbj_solver.cli carry
   no way to set an individual bucket. (Or just run `wizard` and pick from a menu.)
 - Rule/model overrides on every command: `--fee`, `--peek-ten`,
   `--split-carry {max,min}`, `--exact`, `--nsets N`, `--refresh`.
+
+When you split, the wizard plays hand 1 first, then hand 2 — and hand 2's advice
+accounts for hand 1's final total (the carry combines the two hands, so a first
+hand that already secured a big multiplier changes the second hand's play).
 
 ---
 
