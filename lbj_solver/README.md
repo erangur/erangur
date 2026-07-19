@@ -5,9 +5,8 @@ answers the only question that matters: **given your hand, the dealer upcard, th
 multiplier you carried in, and the multiplier set revealed this round, what is
 the mathematically optimal play?**
 
-Unlike the old DQN attempt, this **computes** the optimum with dynamic
-programming (the model is fully known), so results are exact and reproducible —
-not approximated.
+It **computes** the optimum with dynamic programming (the model is fully known),
+so results are exact and reproducible — not approximated.
 
 ---
 

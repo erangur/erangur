@@ -206,11 +206,7 @@ def cmd_wizard(args):
     print("Lightning Blackjack — interactive strategy wizard")
     print("(press Enter at a prompt to accept the [default])\n")
 
-    cards = _ask("Your hand (e.g. 10,6 or A,7): ", parse_hand)
-    up = _ask("Dealer upcard (2-10, A): ", parse_card)
-    carry = _ask("Carried-in multiplier [1 = none]: ", int, default=1)
-
-    print("\nRevealed multipliers this round — pick the set by its Blackjack "
+    print("Revealed multipliers this round — pick the set by its Blackjack "
           "multiplier:")
     for i, tier in enumerate(TIERS, 1):
         body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
@@ -225,6 +221,11 @@ def cmd_wizard(args):
         raise ValueError(f"choose 1-{len(TIERS)} or a BJ value {list(TIER_BJ_VALUES)}")
 
     revealed_set = _ask("Choice: ", pick)
+
+    cards = _ask("\nYour hand (e.g. 10,6 or A,7): ", parse_hand)
+    up = _ask("Dealer upcard (2-10, A): ", parse_card)
+    carry = _ask("Carried-in multiplier [1 = none]: ", int, default=1)
+
     hand_label = ",".join("A" if c == 11 else str(c) for c in cards)
     up_label = "A" if up == 11 else str(up)
     _print_decision(sol, cards, up, carry, revealed_set, hand_label, up_label)
