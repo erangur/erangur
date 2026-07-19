@@ -79,16 +79,9 @@ python -m lbj_solver.cli carry
 - Rule/model overrides on every command: `--fee`, `--peek-ten`,
   `--split-carry {max,min}`, `--exact`, `--nsets N`, `--refresh`.
 
-### Split hands in the wizard are coupled
-
 When you split, the wizard plays hand 1 first, then hand 2 — and hand 2's advice
-**accounts for hand 1's final total**. Because the carry forward combines the two
-hands (`max` by default), a first hand that already secured a big multiplier
-removes the second hand's incentive to chase one. Concretely, at 17 vs a dealer
-9 on a low set: if hand 1 finished on **20** the second hand should **stand**,
-but if hand 1 finished on **18** it should **hit** the stiff 17 to reach for a
-bigger carry. (The engine's aggregate split EV still assumes both hands play the
-solo policy; only the interactive wizard exploits the sibling's known total.)
+accounts for hand 1's final total (the carry combines the two hands, so a first
+hand that already secured a big multiplier changes the second hand's play).
 
 ---
 

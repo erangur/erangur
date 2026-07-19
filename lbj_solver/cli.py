@@ -263,11 +263,10 @@ def _hand_outcome(total, dealer_final):
 def cmd_wizard(args):
     from .multipliers import TIERS, TIER_BJ_VALUES
     sol = get_solution(args)
-    print("Lightning Blackjack — interactive strategy wizard")
-    print("Plays a continuous session: each round it suggests the optimal play,")
-    print("asks what you actually did and which card came (splits included), then")
-    print("asks the dealer's result and carries the multiplier into the next round.")
-    print("Press Ctrl-D (or Ctrl-C) at any prompt to quit.\n")
+    print("Lightning Blackjack wizard. Ctrl-D to quit.\n")
+    for i, tier in enumerate(TIERS, 1):
+        body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
+        print(f"  {i})  BJ {tier['BJ']:>2}x   ({body})")
 
     def pick(raw):
         n = int(raw)
@@ -277,38 +276,29 @@ def cmd_wizard(args):
             return next(dict(t) for t in TIERS if t["BJ"] == n)
         raise ValueError(f"choose 1-{len(TIERS)} or a BJ value {list(TIER_BJ_VALUES)}")
 
-    carry = _ask("Carried-in multiplier to start [1 = none]: ", int, default=1)
+    carry = _ask("Starting carry [1]: ", int, default=1)
 
     round_no = 1
     try:
         while True:
-            print(f"\n{'='*56}\nRound {round_no}   (carrying in {carry}x)\n{'='*56}")
-            print("Revealed multipliers this round — pick the set by its "
-                  "Blackjack multiplier:")
-            for i, tier in enumerate(TIERS, 1):
-                body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
-                print(f"  {i})  BJ {tier['BJ']:>2}x   ({body})")
-            revealed_set = _ask("Set: ", pick)
-            cards = _ask("Your hand (e.g. 10,6 or A,7): ", parse_hand)
-            up = _ask("Dealer upcard (2-10, A): ", parse_card)
-
+            print(f"\n----- Round {round_no}  (carry {carry}x) -----")
+            revealed_set = _ask("Set (# or BJ mult): ", pick)
+            cards = _ask("Hand: ", parse_hand)
+            up = _ask("Dealer up: ", parse_card)
             ev = sol.evaluator(carry, revealed_set)
-            print(f"\nSet BJ {revealed_set['BJ']}x  ({describe_set(revealed_set)})"
-                  f"    carry={carry}    dealer {_up_label(up)}")
             hands = _interactive_round(ev, cards, up)
             carry = _resolve_round(ev, hands)
-            print(f"\n  => carry into next round: {carry}x")
+            print(f"  carry -> {carry}x")
             round_no += 1
     except (EOFError, KeyboardInterrupt):
-        print("\n\nSession ended.")
+        print("\nbye")
 
 
 def _interactive_round(ev, cards, up):
     """Play one round interactively. Returns ``[(final_total_or_None, natural)]``
     — one entry per hand (two after a split)."""
     if is_natural(cards):
-        print(f"\n{_hand_str(cards)} is a natural blackjack — no decision, "
-              "you stand and get paid.")
+        print(f"  {_hand_str(cards)} = natural blackjack.")
         return [(21, True)]
 
     total, soft = hand_from_cards(cards)
@@ -326,8 +316,7 @@ def _interactive_round(ev, cards, up):
     if chosen == DOUBLE:
         c = _ask("Card drawn on the double? ", parse_card)
         nt, ns, bust = add_card(total, soft, c)
-        print(f"  -> {_hand_str(cards + [c])} = {'BUST' if bust else nt} "
-              "(doubled stake)")
+        print(f"  -> {_hand_str(cards + [c])} = {'BUST' if bust else nt}")
         return [(None if bust else nt, False)]
     # hit
     c = _ask("Card drawn? ", parse_card)
@@ -365,9 +354,7 @@ def _continue_solo_hand(ev, cards, up):
 def _play_split(ev, pair_rank, up):
     """Play both post-split hands in order; hand 2 is coupled to hand 1's total.
     Returns ``[(t1, False), (t2, False)]``."""
-    print(f"\n=== SPLIT {_card_label(pair_rank)}s — two hands, played in order ===")
-    print("Hand 1 is played first; hand 2's advice then accounts for hand 1's "
-          f"final\ntotal, since the carry combines the two ({ev.cfg.split_carry_rule}).")
+    print(f"  split {_card_label(pair_rank)}s")
     t1 = _play_split_hand(ev, pair_rank, up, 1, partner="solo")
     t2 = _play_split_hand(ev, pair_rank, up, 2, partner=t1)
     return [(t1, False), (t2, False)]
@@ -378,14 +365,12 @@ def _play_split_hand(ev, pair_rank, up, hand_no, partner):
     total / None (hand 2). Returns this hand's final total, or None if it busted.
     """
     if pair_rank == 11 and ev.cfg.split_aces_one_card:
-        c = _ask(f"\nHand {hand_no}: card dealt to the split Ace? ", parse_card)
+        c = _ask(f"Hand {hand_no} card: ", parse_card)
         total, _ = hand_from_cards([11, c])
-        print(f"  Hand {hand_no}: A,{_card_label(c)} = {total} "
-              "(split aces get one card only)")
+        print(f"  Hand {hand_no}: A,{_card_label(c)} = {total}")
         return total
 
-    c = _ask(f"\nHand {hand_no}: first card dealt to the {_card_label(pair_rank)}? ",
-             parse_card)
+    c = _ask(f"Hand {hand_no} first card: ", parse_card)
     cards = [pair_rank, c]
     total, soft = hand_from_cards(cards)
     while True:
@@ -414,37 +399,23 @@ def _play_split_hand(ev, pair_rank, up, hand_no, partner):
 def _resolve_round(ev, hands):
     """Ask the dealer's result, report each hand, and return the carry forward."""
     if all(t is None for t, _ in hands):
-        print("\nAll hands busted — you lose. Carry resets to 1x.")
+        print("  all bust -> loss")
         return 1
 
-    dealer = _ask("\nDealer's final total? (number, or 'bust'): ", parse_dealer)
-    d_label = "bust" if dealer == "bust" else str(dealer)
+    dealer = _ask("Dealer: ", parse_dealer)
     take_max = ev.cfg.split_carry_rule != "min"
     win_mults = []
     for i, (total, natural) in enumerate(hands, 1):
-        label = f"Hand {i}" if len(hands) > 1 else "Your hand"
+        label = f"Hand {i}" if len(hands) > 1 else "Result"
         outcome = _hand_outcome(total, dealer)
-        if total is None:
-            print(f"  {label}: bust — loss.")
-        elif outcome == "win":
+        if outcome == "win":
             m = ev.model.multiplier_for(ev.revealed_set, total, natural)
             win_mults.append(m)
-            tag = "natural blackjack" if natural else f"{total}"
-            print(f"  {label}: {tag} beats dealer {d_label} — WIN, earns {m}x carry.")
-        elif outcome == "push":
-            print(f"  {label}: {total} pushes dealer {d_label} — no carry.")
+            print(f"  {label}: win ({m}x)")
         else:
-            print(f"  {label}: {total} loses to dealer {d_label}.")
+            print(f"  {label}: {outcome}")
 
-    if not win_mults:
-        print("  No winning hand — carry resets to 1x.")
-        return 1
-    carry = (max if take_max else min)(win_mults)
-    if len(win_mults) > 1:
-        which = "highest" if take_max else "lowest"
-        print(f"  Two winning hands — carrying the {which}: {carry}x "
-              f"(rule '{ev.cfg.split_carry_rule}').")
-    return carry
+    return (max if take_max else min)(win_mults) if win_mults else 1
 
 
 def cmd_simulate(args):
