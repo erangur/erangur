@@ -302,6 +302,10 @@ class LBJGui:
                   fill=_KEY, hover=_KEY_HOVER, surface=_BAR).pack(side="right", padx=6)
         self._btn(headpad, "⚙", self._open_settings, width=42, height=40,
                   fill=_KEY, hover=_KEY_HOVER, surface=_BAR).pack(side="right")
+        self.store_btn = self._btn(headpad, "Store: off", self._toggle_store,
+                                   width=112, height=40, fill=_KEY,
+                                   hover=_KEY_HOVER, surface=_BAR)
+        self.store_btn.pack(side="right", padx=(0, 10))
 
         # ---- felt table --------------------------------------------------
         self.canvas = tk.Canvas(self.root, height=252, bg=_FELT,
@@ -614,15 +618,19 @@ class LBJGui:
                    font=self.f_base).grid(row=2, column=1, sticky="w",
                                           padx=10, pady=(10, 0))
 
-        tk.Checkbutton(win, text="Store each round's set (for the histogram)",
-                       variable=self.store_hist_var, bg=_BG, fg=_INK,
-                       selectcolor=_KEY, activebackground=_BG,
-                       activeforeground=_INK, font=self.f_base,
-                       highlightthickness=0, bd=0).grid(row=3, column=0,
-                                                        columnspan=3, sticky="w",
-                                                        pady=(14, 0))
+        tk.Label(win, text="Histogram recording is the “Store” toggle in the "
+                 "header.", bg=_BG, fg=_MUTED, font=self.f_small).grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(14, 0))
         self._btn(win, "Close", win.destroy, width=90, height=38,
                   surface=_BG).grid(row=4, column=0, columnspan=3, pady=(16, 0))
+
+    def _toggle_store(self):
+        on = not self.store_hist_var.get()
+        self.store_hist_var.set(on)
+        self.store_btn.set_selected(on)
+        self.store_btn.set_text("Store: ON" if on else "Store: off")
+        self._log("  histogram recording " + ("ON — each dealt set is saved"
+                                              if on else "off"))
 
     def _on_auto_toggle(self):
         self.session.auto = self.auto_var.get()
