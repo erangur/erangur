@@ -37,7 +37,8 @@ distribution** — not on the fee.
 Pure Python 3 standard library, no dependencies.
 
 ```bash
-cd /Users/droraharon/playground/erangur
+# Run from the directory that contains the `lbj_solver` package (its parent)
+cd /path/to/repo
 python -m lbj_solver.cli <command> [options]
 ```
 

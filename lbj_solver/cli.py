@@ -264,9 +264,6 @@ def cmd_wizard(args):
     from .multipliers import TIERS, TIER_BJ_VALUES
     sol = get_solution(args)
     print("Lightning Blackjack wizard. Ctrl-D to quit.\n")
-    for i, tier in enumerate(TIERS, 1):
-        body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
-        print(f"  {i})  BJ {tier['BJ']:>2}x   ({body})")
 
     def pick(raw):
         n = int(raw)
@@ -276,7 +273,12 @@ def cmd_wizard(args):
             return next(dict(t) for t in TIERS if t["BJ"] == n)
         raise ValueError(f"choose 1-{len(TIERS)} or a BJ value {list(TIER_BJ_VALUES)}")
 
+    # Carry first; the multiplier set is only revealed (and chosen) afterwards.
     carry = _ask("Starting carry [1]: ", int, default=1)
+
+    for i, tier in enumerate(TIERS, 1):
+        body = " ".join(f"{b}:{tier[b]}" for b in ("18", "19", "20", "21"))
+        print(f"  {i})  BJ {tier['BJ']:>2}x   ({body})")
 
     round_no = 1
     try:
