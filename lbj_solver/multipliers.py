@@ -16,7 +16,12 @@ Per-hand decisions use the *actual revealed* set, so the distribution only drive
 correlated, that distribution must be the real menu, not an independent product.
 """
 
+import csv
+import datetime
 import os
+import re
+import socket
+import uuid
 from collections import Counter
 
 # Bucket keys in canonical order.
@@ -43,6 +48,130 @@ BUCKET_RANGES = {b: tuple(sorted({tier[b] for tier in TIERS})) for b in BUCKETS}
 CARRY_VALUES = tuple(sorted({1} | {m for tier in TIERS for m in tier.values()}))
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+# Legacy single-file log (pre-per-session); still folded into the overall view.
+OBSERVED_SETS_FILE = os.path.join(_DATA_DIR, "observed_sets.csv")
+# One CSV per session/instance lives here. Uniquely named so instances on
+# different machines never collide — commit & pull them and the overall
+# histogram simply grows.
+HISTOGRAM_DIR = os.path.join(_DATA_DIR, "histograms")
+
+
+def new_session_file(directory=None, host=None, now=None, token=None):
+    """A unique CSV path for one running instance's histogram.
+
+    Named ``session_<host>_<YYYYMMDD-HHMMSS>_<token>.csv`` so two instances —
+    even on the same machine at the same second — never pick the same file and
+    git merges cleanly. The file itself is created lazily on the first record.
+    """
+    directory = directory or HISTOGRAM_DIR
+    host = re.sub(r"[^A-Za-z0-9]+", "-", host or socket.gethostname()).strip("-")
+    stamp = (now or datetime.datetime.now()).strftime("%Y%m%d-%H%M%S")
+    token = token or uuid.uuid4().hex[:8]
+    return os.path.join(directory, f"session_{host or 'host'}_{stamp}_{token}.csv")
+
+
+def record_observed_set(revealed_set, path=None, now=None):
+    """Append one observed revealed set to a session CSV log.
+
+    Each row is a single real-world sample of which multiplier set the game
+    revealed in a round: a timestamp followed by the multiplier for every bucket
+    (the BJ column alone identifies the tier, but the full set is kept for later
+    analysis). Header is written once. Returns the path written to.
+    """
+    path = path or OBSERVED_SETS_FILE
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    is_new = not os.path.exists(path)
+    stamp = (now or datetime.datetime.now()).isoformat(timespec="seconds")
+    with open(path, "a", newline="") as fh:
+        writer = csv.writer(fh)
+        if is_new:
+            writer.writerow(["timestamp", *BUCKETS])
+        writer.writerow([stamp, *(revealed_set[b] for b in BUCKETS)])
+    return path
+
+
+def _read_rows(path):
+    """All ``(timestamp, revealed_set)`` samples from one CSV (unfiltered)."""
+    rows = []
+    if not os.path.exists(path):
+        return rows
+    with open(path, newline="") as fh:
+        reader = csv.reader(fh)
+        next(reader, None)                       # header
+        for row in reader:
+            if len(row) < 1 + len(BUCKETS):
+                continue
+            try:
+                ts = datetime.datetime.fromisoformat(row[0])
+                vals = [int(x) for x in row[1:1 + len(BUCKETS)]]
+            except ValueError:
+                continue
+            rows.append((ts, dict(zip(BUCKETS, vals))))
+    return rows
+
+
+def _filter_rows(rows, last_n, within_hours, now):
+    if within_hours:
+        now = now or datetime.datetime.now()
+        cutoff = now - datetime.timedelta(hours=within_hours)
+        rows = [r for r in rows if r[0] >= cutoff]
+    if last_n is not None:
+        rows = rows[-last_n:]
+    return rows
+
+
+def histogram_files(directory=None, include_legacy=True):
+    """Every session CSV to fold into the overall histogram."""
+    directory = directory or HISTOGRAM_DIR
+    files = []
+    if include_legacy and os.path.exists(OBSERVED_SETS_FILE):
+        files.append(OBSERVED_SETS_FILE)
+    if os.path.isdir(directory):
+        files += [os.path.join(directory, n) for n in sorted(os.listdir(directory))
+                  if n.endswith(".csv")]
+    return files
+
+
+def load_observed_sets(path=None, last_n=None, within_hours=2, now=None):
+    """Recent observed sets from ONE log file, filtered to the last
+    ``within_hours`` (``None`` = no limit) then trimmed to the last ``last_n``."""
+    return _filter_rows(_read_rows(path or OBSERVED_SETS_FILE), last_n,
+                        within_hours, now)
+
+
+def load_all_observed_sets(directory=None, last_n=None, within_hours=None,
+                           now=None, include_legacy=True):
+    """Observed sets pooled across ALL session files, sorted by time."""
+    rows = []
+    for path in histogram_files(directory, include_legacy):
+        rows += _read_rows(path)
+    rows.sort(key=lambda r: r[0])
+    return _filter_rows(rows, last_n, within_hours, now)
+
+
+def _tier_counts(rows):
+    counts = {bj: 0 for bj in TIER_BJ_VALUES}
+    for _, revealed_set in rows:
+        bj = revealed_set.get("BJ")
+        if bj in counts:
+            counts[bj] += 1
+    return counts, len(rows)
+
+
+def observed_tier_counts(path=None, last_n=None, within_hours=2, now=None):
+    """Tier frequencies from ONE session file (used for the current session).
+
+    Returns ``(counts, total)`` where ``counts`` covers every menu BJ value.
+    """
+    return _tier_counts(load_observed_sets(path, last_n, within_hours, now))
+
+
+def overall_tier_counts(directory=None, now=None, include_legacy=True):
+    """Tier frequencies pooled across every session file (the overall view)."""
+    return _tier_counts(load_all_observed_sets(directory, now=now,
+                                               include_legacy=include_legacy))
 
 
 def load_bj_histogram(path=None):

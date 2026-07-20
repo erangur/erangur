@@ -44,6 +44,12 @@ python -m lbj_solver.cli <command> [options]
 ### Commands
 
 ```bash
+# Graphical interactive session (tkinter, stdlib — no dependencies). Same
+# continuous carry-tracking flow as the wizard, but you click the set, hand,
+# upcard, action and dealer result. Trivial and high-conviction decisions are
+# auto-played for you, and a Reset/Bust button starts a fresh session anytime.
+python -m lbj_solver.cli gui        # or: python -m lbj_solver.gui
+
 # One-time precompute of carry values (cached to data/solution.json)
 python -m lbj_solver.cli solve
 
@@ -85,6 +91,65 @@ hand that already secured a big multiplier changes the second hand's play).
 
 ---
 
+## GUI & auto-play
+
+`python -m lbj_solver.cli gui` opens a tkinter window that runs the same
+continuous session as the wizard — pick the revealed set, enter your hand and
+the dealer upcard, click your action and the card that came, enter the dealer's
+result, and the earned multiplier carries into the next round. A **Reset / Bust**
+button drops the carry back to the starting value and begins fresh at any time.
+
+To keep you from clicking through obvious spots, the GUI (and the shared
+`session.py` controller) **auto-plays decisions that aren't real choices**. A node
+is auto-played when any of:
+
+- it has only one legal action;
+- **risk-free** — the solver's pick is *hit* on a hand that cannot bust (a soft
+  hand, or a hard total ≤ 11); this covers the "small total, no carry → hit" case;
+- **high conviction** — the best action beats the second-best by a margin that,
+  divided by the current carry, clears a threshold (default `0.20`). Normalising
+  by the carry keeps a genuine "ask" zone at every carry level (a fixed absolute
+  margin would collapse to always-auto once the carry is large). This is what
+  auto-fires the aggressive chases a big carry makes clearly correct — e.g.
+  **doubling a soft 15 vs a 10 under a large carry**.
+
+Auto-play can be toggled off, and the conviction threshold is a live slider —
+slide it to `0` to auto-play the solver's top action almost everywhere, or up to
+`1` to be asked about nearly everything. Every auto-played move is written to the
+history log with the reason, so nothing happens silently.
+
+The set and dealer-upcard inputs are card-style buttons; the player hand can be
+typed (`10,6`) or built with the same buttons.
+
+---
+
+## Collecting the multiplier histogram
+
+The real multiplier-set distribution is only approximately known (67 samples).
+The GUI can help refine it: tick **Store each round's set** and every revealed
+set is logged with a timestamp.
+
+To let many people on many machines pool their observations without git
+conflicts, **each running instance writes its own file** under
+`data/histograms/`, uniquely named `session_<host>_<timestamp>_<token>.csv`.
+Commit and push yours; when others pull, their files just appear alongside —
+**Show histogram** pools every file into the *overall* view. So the flow is
+simply *play → push → pull → richer distribution*.
+
+**Show histogram** plots two overlaid series as relative frequency per tier:
+
+- **blue — All sessions**: every `data/histograms/*.csv` pooled (the shared,
+  ever-growing distribution);
+- **red — This session**: only *this* instance's file, restricted to the last
+  `N` games (pickable) played within the last 2 hours — so you can see whether
+  you're currently running hot or cold versus the pooled baseline.
+
+(The pooled samples are raw material for a future data-driven set distribution;
+today they only feed the chart. The legacy single-file `observed_sets.csv` is
+still folded into the overall view locally.)
+
+---
+
 ## Architecture
 
 | Module | Role |
@@ -98,6 +163,8 @@ hand that already secured a big multiplier changes the second hand's play).
 | `solution.py` | Solve + disk cache + high-level query API. |
 | `strategy.py` | Human-readable strategy grids with deviation marks. |
 | `simulator.py` | Monte-Carlo full-round RTP validation. |
+| `session.py` | UI-agnostic continuous-session controller + auto-play policy. |
+| `gui.py` | Tkinter graphical front end (uses `session.py`). |
 | `cli.py` | Command-line front end. |
 
 ### How it's solved

@@ -418,6 +418,11 @@ def _resolve_round(ev, hands):
     return (max if take_max else min)(win_mults) if win_mults else 1
 
 
+def cmd_gui(args):
+    from . import gui
+    gui.run(make_config(args))
+
+
 def cmd_simulate(args):
     from .simulator import simulate
     sol = get_solution(args)
@@ -452,6 +457,9 @@ def build_parser():
                         help="sample N sets instead of exact enumeration")
         sp.add_argument("--refresh", action="store_true",
                         help="ignore cache and re-solve")
+
+    sp = sub.add_parser("gui", help="graphical interactive session (tkinter)")
+    common(sp); sp.set_defaults(func=cmd_gui)
 
     sp = sub.add_parser("wizard", help="interactive prompt-by-prompt query")
     common(sp); sp.set_defaults(func=cmd_wizard)
