@@ -32,7 +32,7 @@
     background:var(--bar); display:flex; align-items:center; gap:12px;
     padding:10px 14px; flex:0 0 auto;
   }
-  .carry{font-size:24px; font-weight:800; color:var(--gold); line-height:1;
+  .carry{font-size:31px; font-weight:800; color:var(--gold); line-height:1;
     display:inline-block; transform-origin:left center;}
   @keyframes carryUp{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--good);}100%{transform:scale(1);}}
   @keyframes carryDown{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--danger);}100%{transform:scale(1);}}
@@ -44,13 +44,13 @@
     background:var(--key); color:var(--key-ink); border-radius:11px;
     padding:9px 11px; font-size:14px; font-weight:700; min-width:40px;
   }
-  .hbtn.reset{color:var(--danger);}
+  .hbtn.reset{color:var(--danger); font-size:19px; line-height:1; padding:7px 11px;}
   .hbtn.on{background:var(--gold); color:var(--gold-ink);}
 
   /* ---- felt table ---- */
   .felt{
     background:linear-gradient(160deg,var(--felt),var(--felt2));
-    flex:0 0 auto; padding:10px 14px 14px; position:relative; min-height:150px;
+    flex:1 1 auto; padding:10px 14px 14px; position:relative; min-height:150px;
   }
   .felt .setind{position:absolute; top:8px; right:12px; text-align:right;}
   .felt .setind .bj{color:#cfe4d6; font-weight:700; font-size:12px;}
@@ -201,15 +201,15 @@
 <body>
   <header>
     <div>
-      <div class="carry" id="carry">Carry 1×</div>
+      <div class="carry" id="carry">1×</div>
       <div class="round" id="round">Round 1</div>
     </div>
     <div class="spacer"></div>
-    <button class="hbtn" id="storeBtn" onclick="toggleStore()">Store: off</button>
+    <button class="hbtn" id="storeBtn" onclick="toggleStore()">Record</button>
     <button class="hbtn" onclick="openStats()">📊</button>
     <button class="hbtn" onclick="openSettings()">⚙</button>
     <button class="hbtn" id="dbgBtn" onclick="openDebug()">🐞</button>
-    <button class="hbtn reset" onclick="doReset()">Reset</button>
+    <button class="hbtn reset" onclick="doReset()" title="Reset" aria-label="Reset">↺</button>
   </header>
 
   <div class="felt" id="felt"></div>
@@ -223,8 +223,6 @@
     <div class="docktitle" id="dockTitle">NEW ROUND</div>
     <div id="dockBody"></div>
   </div>
-
-  <div style="flex:1 1 auto;"></div>
 
   <!-- settings modal -->
   <div class="backdrop" id="settingsBack">
@@ -1123,7 +1121,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 11 · carry flash + log in settings";
+const BUILD = "serverless 12 · header cleanup + fill space";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1383,7 +1381,7 @@ function apply(snap){
   }
   SNAP = snap;
   const carryEl = document.getElementById("carry");
-  carryEl.textContent = "Carry "+snap.carry+"×";
+  carryEl.textContent = snap.carry+"×";
   if(prevCarry !== null && snap.carry !== prevCarry){
     const dir = snap.carry === 1 ? "flash-down" : "flash-up";   // red back to 1×, green if a carry is held
     carryEl.classList.remove("flash-up","flash-down");
@@ -1402,7 +1400,6 @@ function apply(snap){
   log.scrollTop = log.scrollHeight;
   // settings widgets
   const st = snap.settings;
-  document.getElementById("storeBtn").textContent = st.store ? "Store: ON" : "Store: off";
   document.getElementById("storeBtn").classList.toggle("on", st.store);
   document.getElementById("autoSw").classList.toggle("on", st.auto);
   document.getElementById("thr").value = st.threshold;
