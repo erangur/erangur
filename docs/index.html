@@ -120,8 +120,13 @@
     padding:15px 6px; font-size:15px; font-weight:800;
   }
   .act.best{background:var(--gold); color:var(--gold-ink);}
-  .cardkeys{display:grid; grid-template-columns:repeat(6,1fr); gap:6px;}
+  .cardkeys{display:flex; flex-wrap:wrap; gap:6px;}
   .cardkeys .key{padding:13px 0;}
+  /* card-value keys share the row equally; the ten-value (K/Q/J/10) is 4x wide */
+  .cardbtn{flex:1 1 0; min-width:0;}
+  .cardbtn.ten{flex-grow:4;}
+  /* SET tier buttons fill their row so all fit on one line */
+  .setbtn{flex:1 1 0; min-width:0; padding-left:3px; padding-right:3px; font-size:12px; white-space:nowrap;}
   .dealerkeys{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
   .dealerkeys .key{padding:14px 0;}
   .dealerkeys .key.bust{background:var(--danger); color:#fff;}
@@ -262,6 +267,7 @@
       <h2>Debug log <span id="dbgBuild" style="color:var(--muted); font-size:12px; font-weight:400;"></span></h2>
       <div class="dbgtitle">ACTIVITY LOG — runs fully in this page, no server</div>
       <pre class="dbglog" id="dbgClient"></pre>
+      <button class="close" style="background:var(--gold); color:var(--gold-ink);" onclick="checkUpdate()">↻ Check for updates &amp; reload</button>
       <button class="close" onclick="closeModal('debugBack')">Close</button>
     </div>
   </div>
@@ -1110,7 +1116,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 4 · reset setup after round";
+const BUILD = "serverless 5 · UI polish";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1122,6 +1128,8 @@ const SUITS = [["♠","black"],["♣","black"],["♥","red"],["♦","red"]];
 const CARD_KEYS = [["A",11],["2",2],["3",3],["4",4],["5",5],["6",6],["7",7],
                    ["8",8],["9",9],["10",10]];
 const DEALER_KEYS = [["17",17],["18",18],["19",19],["20",20],["21",21],["Bust","bust"]];
+// A ten-valued key represents K/Q/J/10, so show all four; other keys unchanged.
+function keyLabel(lab){ return lab==="10" ? "K,Q,J,T" : lab; }
 let SNAP = null;
 let selBj = null, selUp = "10", handStr = "";
 
@@ -1204,10 +1212,9 @@ function renderFelt(t){
   const felt = document.getElementById("felt");
   felt.innerHTML = "";
   if(t.set){
-    const body = ["18","19","20","21"].map(b=>t.set[b]).join("/");
     const ind = document.createElement("div");
     ind.className="setind";
-    ind.innerHTML = `<div class="bj">SET  BJ ${t.set.BJ}×</div><div class="body">18-21: ${body}</div>`;
+    ind.innerHTML = `<div class="bj">SET  BJ ${t.set.BJ}×</div>`;
     felt.appendChild(ind);
   }
   // dealer
@@ -1253,7 +1260,7 @@ function renderChips(evs){
   for(const e of evs){
     const d = document.createElement("div");
     d.className = "chip " + (e.best ? "best" : (e.ev>=0 ? "pos":"neg"));
-    let txt = `${e.label}  ${e.ev>=0?"+":""}${e.ev.toFixed(3)}`;
+    let txt = `${e.label}  ${e.ev>=0?"+":""}${e.ev.toFixed(2)}`;
     if(e.best) txt += e.auto ? "  ◀ auto" : "  ◀";
     d.textContent = txt;
     c.appendChild(d);
@@ -1272,12 +1279,10 @@ function renderSetup(){
   r1.innerHTML = `<span class="lab">SET</span>`;
   SNAP.bj_values.forEach(bj=>{
     const b = document.createElement("button");
-    b.className = "tog" + (bj===selBj ? " sel":""); b.textContent = "BJ "+bj+"×";
+    b.className = "tog setbtn" + (bj===selBj ? " sel":""); b.textContent = "BJ "+bj+"×";
     b.onclick = ()=>{ selBj=bj; renderSetup(); };
     r1.appendChild(b);
   });
-  const sb = document.createElement("span"); sb.className="setbody";
-  sb.textContent = "18-21: "+setBody(selBj); r1.appendChild(sb);
   box.appendChild(r1);
   // HAND row
   const r2 = document.createElement("div"); r2.className="setuprow";
@@ -1289,7 +1294,8 @@ function renderSetup(){
   const kr = document.createElement("div"); kr.className="keyrow";
   kr.style.marginBottom="6px";
   CARD_KEYS.forEach(([lab])=>{
-    const b=document.createElement("button"); b.className="key"; b.textContent=lab;
+    const b=document.createElement("button");
+    b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
     b.onclick=()=>{ if(handStr.split(",").filter(x=>x).length>=2) return;  // a starting hand is 2 cards
                     handStr = handStr ? handStr+","+lab : lab;
                     document.querySelector("input.hand").value = handStr; };
@@ -1304,7 +1310,7 @@ function renderSetup(){
   r3.innerHTML = `<span class="lab">UPCARD</span>`;
   CARD_KEYS.forEach(([lab])=>{
     const b=document.createElement("button");
-    b.className="tog"+(lab===selUp?" sel":""); b.textContent=lab;
+    b.className="tog cardbtn"+(lab==="10"?" ten":"")+(lab===selUp?" sel":""); b.textContent=keyLabel(lab);
     b.onclick=()=>{ selUp=lab; renderSetup(); };
     r3.appendChild(b);
   });
@@ -1331,7 +1337,8 @@ function renderPlay(snap){
   } else if(snap.pending==="card"){
     const g=document.createElement("div"); g.className="cardkeys";
     CARD_KEYS.forEach(([lab,rank])=>{
-      const b=document.createElement("button"); b.className="key"; b.textContent=lab;
+      const b=document.createElement("button");
+      b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
       b.onclick=()=>send("/api/card",{rank});
       g.appendChild(b);
     });
@@ -1403,6 +1410,20 @@ function openDebug(){
   document.getElementById("debugBack").classList.add("show");
   document.getElementById("dbgBuild").textContent = "· "+BUILD;
   renderClientLog();
+}
+async function checkUpdate(){
+  dbg("checking for updates…");
+  try{
+    if("serviceWorker" in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.update()));
+    }
+    if(window.caches){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));   // force a fresh fetch
+    }
+  }catch(e){ dbg("update check error: "+e.message,"err"); }
+  location.reload();
 }
 
 /* ---- stats ---- */
