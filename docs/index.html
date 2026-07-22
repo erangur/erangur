@@ -18,8 +18,9 @@
     --danger:#c0563f; --felt:#2c6b4a; --felt2:#215139;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; height:100%;}
+  html,body{margin:0;}
   body{
+    height:100vh; height:100dvh;            /* fill the real screen (dvh: iOS standalone) */
     background:var(--bg); color:var(--ink); overflow:hidden;
     font-family:-apple-system,"SF Pro Text","Helvetica Neue",Roboto,system-ui,sans-serif;
     display:flex; flex-direction:column;
@@ -50,7 +51,7 @@
   /* ---- felt table ---- */
   .felt{
     background:linear-gradient(160deg,var(--felt),var(--felt2));
-    flex:1 1 auto; padding:10px 14px 14px; position:relative; min-height:150px;
+    flex:1 0 auto; padding:10px 14px 14px; position:relative; min-height:150px;
   }
   .felt .setind{position:absolute; top:8px; right:12px; text-align:right;}
   .felt .setind .bj{color:#cfe4d6; font-weight:700; font-size:12px;}
@@ -1129,7 +1130,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 16 · setup preview on felt";
+const BUILD = "serverless 17 · full-height felt";
 window.LBJ = { App, BUILD };
 })();
 </script>
