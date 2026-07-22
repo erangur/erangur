@@ -1116,7 +1116,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 7 · setup rows 6+4";
+const BUILD = "serverless 8 · card keypad rows";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1343,14 +1343,18 @@ function renderPlay(snap){
     });
     box.appendChild(a);
   } else if(snap.pending==="card"){
-    const g=document.createElement("div"); g.className="cardkeys";
-    CARD_KEYS.forEach(([lab,rank])=>{
+    // same two-row layout as HAND/UPCARD (A-6 / 7-K,Q,J,T)
+    const cardKey=([lab,rank])=>{
       const b=document.createElement("button");
       b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
       b.onclick=()=>send("/api/card",{rank});
-      g.appendChild(b);
+      return b;
+    };
+    [[0,6],[6,10]].forEach(([a,z])=>{
+      const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
+      CARD_KEYS.slice(a,z).forEach(ck=>kr.appendChild(cardKey(ck)));
+      box.appendChild(kr);
     });
-    box.appendChild(g);
   } else if(snap.pending==="dealer"){
     const g=document.createElement("div"); g.className="dealerkeys";
     DEALER_KEYS.forEach(([lab,val])=>{
