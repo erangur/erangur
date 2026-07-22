@@ -1116,7 +1116,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 5 · UI polish";
+const BUILD = "serverless 6 · roomier setup";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1284,37 +1284,45 @@ function renderSetup(){
     r1.appendChild(b);
   });
   box.appendChild(r1);
-  // HAND row
+  // HAND row: label + read-only display + Clear, all on one line
   const r2 = document.createElement("div"); r2.className="setuprow";
   r2.innerHTML = `<span class="lab">HAND</span>`;
   const inp = document.createElement("input"); inp.className="hand"; inp.value=handStr;
-  inp.placeholder="tap 2 cards"; inp.readOnly=true;
+  inp.placeholder="tap cards"; inp.readOnly=true;
   r2.appendChild(inp);
+  const clr=document.createElement("button"); clr.className="btn-clear"; clr.textContent="Clear";
+  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; };
+  r2.appendChild(clr);
   box.appendChild(r2);
-  const kr = document.createElement("div"); kr.className="keyrow";
-  kr.style.marginBottom="6px";
-  CARD_KEYS.forEach(([lab])=>{
+  // HAND keys — two rows of five so the buttons are big
+  const handKey=(lab)=>{
     const b=document.createElement("button");
     b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
     b.onclick=()=>{ if(handStr.split(",").filter(x=>x).length>=2) return;  // a starting hand is 2 cards
                     handStr = handStr ? handStr+","+lab : lab;
                     document.querySelector("input.hand").value = handStr; };
-    kr.appendChild(b);
+    return b;
+  };
+  [[0,5],[5,10]].forEach(([a,z])=>{
+    const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
+    CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(handKey(lab)));
+    box.appendChild(kr);
   });
-  const clr=document.createElement("button"); clr.className="btn-clear"; clr.textContent="Clear";
-  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; };
-  kr.appendChild(clr);
-  box.appendChild(kr);
-  // UPCARD row
-  const r3 = document.createElement("div"); r3.className="setuprow";
-  r3.innerHTML = `<span class="lab">UPCARD</span>`;
-  CARD_KEYS.forEach(([lab])=>{
+  // UPCARD — label line, then two rows of five
+  const ul=document.createElement("div"); ul.className="setuprow";
+  ul.innerHTML = `<span class="lab">UPCARD</span>`;
+  box.appendChild(ul);
+  const upKey=(lab)=>{
     const b=document.createElement("button");
     b.className="tog cardbtn"+(lab==="10"?" ten":"")+(lab===selUp?" sel":""); b.textContent=keyLabel(lab);
     b.onclick=()=>{ selUp=lab; renderSetup(); };
-    r3.appendChild(b);
+    return b;
+  };
+  [[0,5],[5,10]].forEach(([a,z])=>{
+    const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
+    CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(upKey(lab)));
+    box.appendChild(kr);
   });
-  box.appendChild(r3);
   // DEAL
   const deal=document.createElement("button"); deal.className="deal"; deal.textContent="DEAL";
   deal.onclick=doDeal; box.appendChild(deal);
