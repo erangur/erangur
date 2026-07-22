@@ -1130,7 +1130,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 17 · full-height felt";
+const BUILD = "serverless 18 · full height from load";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1510,6 +1510,15 @@ function mkBar(cls, p, maxp){
 }
 
 /* boot */
+// iOS often reports a stale viewport height on first paint (dvh/vh only settle
+// after an interaction), leaving an empty strip until you tap. Pin the app to
+// the real innerHeight up front, and keep it in sync on resize/rotate.
+function fitHeight(){ document.body.style.height = window.innerHeight + "px"; }
+fitHeight();
+requestAnimationFrame(fitHeight);
+window.addEventListener("resize", fitHeight);
+window.addEventListener("orientationchange", ()=>setTimeout(fitHeight, 250));
+window.addEventListener("load", fitHeight);
 dbg("serverless build — solver runs in-page ("+BUILD+")");
 refresh();
 if("serviceWorker" in navigator){
