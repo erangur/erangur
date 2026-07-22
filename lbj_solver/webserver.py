@@ -9,6 +9,13 @@ it), so it keeps working even when this process is gone or the host app (a-Shell
 is suspended in the background — which is what made the old server-backed version
 unusable on iOS.
 
+Deliberately implemented as a **bare blocking ``socket.accept()`` loop** — no
+``http.server``/``socketserver``/``selectors``/threads. a-Shell's sandboxed
+Python has been seen to crash inside ``serve_forever`` → ``selectors.select``
+("failed to read thread state"), and it can't hand sockets to worker threads
+either. A one-request-at-a-time accept loop sidesteps all of that; it only has to
+serve a handful of GETs for the initial load, so nothing fancy is needed.
+
     python -m lbj_solver.webserver              # serves http://127.0.0.1:8000
     python -m lbj_solver.webserver --port 8080
     python -m lbj_solver.webserver --host 0.0.0.0   # reachable over the LAN
@@ -18,14 +25,14 @@ Open the printed address in Safari, then Share -> Add to Home Screen.
 
 import argparse
 import os
+import socket
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Bump on server-behaviour changes so a phone can confirm what it served.
-_BUILD = "6 · static loader (serverless app)"
+_BUILD = "7 · bare-socket static loader"
 
-# A short per-connection timeout so a browser's dataless "preconnect" socket
-# can't wedge the single request-handling thread (a-Shell has no usable threads).
+# Per-connection read timeout: a browser's dataless "preconnect" can't wedge the
+# single-threaded accept loop for more than this long.
 _SOCK_TIMEOUT = 4
 
 _WEB = os.path.join(os.path.dirname(__file__), "web")
@@ -39,22 +46,12 @@ _CTYPES = {
     ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
 }
 
-
-class _DebugLog:
-    """Timestamped ring buffer that also echoes to the console."""
-
-    def __init__(self, cap=250):
-        self.cap = cap
-        self.lines = []
-
-    def add(self, msg):
-        line = f"{time.strftime('%H:%M:%S')}  {msg}"
-        self.lines.append(line)
-        del self.lines[:-self.cap]
-        print(line, flush=True)
+_STATUS = {200: "OK", 204: "No Content", 400: "Bad Request",
+           404: "Not Found", 500: "Internal Server Error"}
 
 
-DEBUG = _DebugLog()
+def _log(msg):
+    print(f"{time.strftime('%H:%M:%S')}  {msg}", flush=True)
 
 
 def _resolve(path):
@@ -71,73 +68,95 @@ def _resolve(path):
     return full
 
 
-def _make_handler():
-    class Handler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-        timeout = _SOCK_TIMEOUT
+def _response(code, body, ctype):
+    if not isinstance(body, (bytes, bytearray)):
+        body = body.encode("utf-8")
+    head = (
+        f"HTTP/1.1 {code} {_STATUS.get(code, 'OK')}\r\n"
+        f"Content-Type: {ctype}\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n"
+        "\r\n"
+    ).encode("latin1")
+    return head + bytes(body)
 
-        def log_message(self, fmt, *args):
-            DEBUG.add("http  " + (fmt % args))
 
-        def log_error(self, fmt, *args):
-            DEBUG.add("http! " + (fmt % args))
+def _build_reply(path):
+    """``(response_bytes, code)`` for a GET ``path``."""
+    if path == "/favicon.ico":
+        return _response(204, b"", "image/x-icon"), 204
+    full = _resolve(path)
+    if not full or not os.path.isfile(full):
+        return _response(404, b"not found", "text/plain"), 404
+    try:
+        with open(full, "rb") as fh:
+            data = fh.read()
+    except OSError as e:
+        _log(f"read failed {full}: {e!r}")
+        return _response(500, b"read error", "text/plain"), 500
+    ext = os.path.splitext(full)[1].lower()
+    return _response(200, data, _CTYPES.get(ext, "application/octet-stream")), 200
 
-        def _send(self, code, body, ctype):
-            data = body if isinstance(body, (bytes, bytearray)) else body.encode("utf-8")
-            self.close_connection = True
-            try:
-                self.send_response(code)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(data)))
-                self.send_header("Connection", "close")
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                if data:
-                    self.wfile.write(data)
-            except OSError as e:
-                DEBUG.add(f"send failed ({code}): {e!r}")
 
-        def do_GET(self):
-            t0 = time.monotonic()
-            path = self.path.split("?", 1)[0]
-            if path == "/favicon.ico":
-                self._send(204, b"", "image/x-icon")
-                code = 204
-            else:
-                full = _resolve(path)
-                if full and os.path.isfile(full):
-                    ext = os.path.splitext(full)[1].lower()
-                    try:
-                        with open(full, "rb") as fh:
-                            self._send(200, fh.read(), _CTYPES.get(ext, "application/octet-stream"))
-                        code = 200
-                    except OSError as e:
-                        self._send(500, b"read error", "text/plain")
-                        code = 500
-                        DEBUG.add(f"read failed {full}: {e!r}")
-                else:
-                    self._send(404, b"not found", "text/plain")
-                    code = 404
-            DEBUG.add(f"GET  {path} -> {code}  ({(time.monotonic()-t0)*1000:.0f} ms)")
-
-    return Handler
+def _serve_one(conn):
+    """Read one HTTP request off ``conn`` and send the reply. Never raises."""
+    t0 = time.monotonic()
+    try:
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return                      # client hung up before sending a request
+            buf += chunk
+            if len(buf) > 65536:
+                break                       # oversized header; treat as bad request
+        line = buf.split(b"\r\n", 1)[0].decode("latin1", "replace")
+        parts = line.split(" ")
+        method, path = (parts[0], parts[1]) if len(parts) >= 2 else ("", "/")
+        if method != "GET":
+            reply, code = _response(400, b"only GET", "text/plain"), 400
+        else:
+            reply, code = _build_reply(path.split("?", 1)[0])
+        conn.sendall(reply)
+        _log(f"GET  {path} -> {code}  ({(time.monotonic()-t0)*1000:.0f} ms)")
+    except socket.timeout:
+        pass                                # idle preconnect; just drop it
+    except OSError as e:
+        _log(f"conn error: {e!r}")
 
 
 def run(host="127.0.0.1", port=8000):
-    httpd = HTTPServer((host, port), _make_handler())
+    ls = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ls.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    ls.bind((host, port))
+    ls.listen(16)
     shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
-    DEBUG.add(f"=== Lightning Blackjack loader — build {_BUILD} ===")
+    _log(f"=== Lightning Blackjack loader — build {_BUILD} ===")
     print(f"serving the app at  http://{shown}:{port}", flush=True)
     print(f"open that EXACT address in Safari (use {shown}, not 'localhost'),", flush=True)
     print("then Share -> Add to Home Screen. After the first load the app runs", flush=True)
     print("fully offline in the browser — you can stop this and close the shell.", flush=True)
     print("--- request log (also on the phone via the bug button) ---", flush=True)
     try:
-        httpd.serve_forever()
+        while True:
+            try:
+                conn, _addr = ls.accept()
+            except OSError as e:
+                _log(f"accept error: {e!r}")
+                continue
+            try:
+                conn.settimeout(_SOCK_TIMEOUT)
+                _serve_one(conn)
+            finally:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
     except KeyboardInterrupt:
         print("\nbye", flush=True)
     finally:
-        httpd.server_close()
+        ls.close()
 
 
 def main(argv=None):
