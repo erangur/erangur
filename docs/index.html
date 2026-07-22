@@ -1005,14 +1005,23 @@ class View {
     const dtxt = (dealer === null || dealer === "bust") ? "bust" : String(dealer);
     const outcomes = summary.outcomes;
     outcomes.forEach((oc, i0) => {
-      const i = i0 + 1;
-      const label = outcomes.length > 1 ? `hand ${i}` : "result";
+      const label = outcomes.length > 1 ? `hand ${i0 + 1}` : "result";
       const note = oc.outcome === "win" ? `win ${oc.mult}×` : oc.outcome;
       this._log(`  ${label}: ${note}`);
-      if (i - 1 < this.t_hands.length) this.t_hands[i - 1].note = note;
     });
     this._log(`  dealer ${dtxt}  ·  carry ${summary.old_carry}× -> ${summary.new_carry}×`);
-    this.t_dealer_final = (dealer === null) ? "bust" : dealer;
+    // Clear the board back to fresh so the next hand starts clean: cards, the
+    // dealer, the SET multiplier badge and the EV chips all go away. The carry
+    // stays in the header — carrying it into the next hand is the whole point.
+    // (The round's result is preserved in the history log above.)
+    this.t_set = null;
+    this.t_hands = [];
+    this.t_dealer_up = null;
+    this.t_dealer_final = null;
+    this.pair_rank = null;
+    this._card_ctx = null;
+    this.evs = [];
+    this.move_buttons = [];
     this.situation = `Round over — carry is now ${summary.new_carry}×.  Pick the next set and Deal.`;
     this.phase = "setup";
   }
@@ -1101,7 +1110,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 1 · in-page solver";
+const BUILD = "serverless 2 · clear board on round end";
 window.LBJ = { App, BUILD };
 })();
 </script>
