@@ -1116,7 +1116,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 6 · roomier setup";
+const BUILD = "serverless 7 · setup rows 6+4";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1303,7 +1303,7 @@ function renderSetup(){
                     document.querySelector("input.hand").value = handStr; };
     return b;
   };
-  [[0,5],[5,10]].forEach(([a,z])=>{
+  [[0,6],[6,10]].forEach(([a,z])=>{
     const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
     CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(handKey(lab)));
     box.appendChild(kr);
@@ -1318,7 +1318,7 @@ function renderSetup(){
     b.onclick=()=>{ selUp=lab; renderSetup(); };
     return b;
   };
-  [[0,5],[5,10]].forEach(([a,z])=>{
+  [[0,6],[6,10]].forEach(([a,z])=>{
     const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
     CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(upKey(lab)));
     box.appendChild(kr);
