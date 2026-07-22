@@ -56,9 +56,9 @@
   .felt .setind .bj{color:#cfe4d6; font-weight:700; font-size:12px;}
   .felt .setind .body{color:#9cc0aa; font-size:11px;}
   .rowlabel{color:#a9c7b5; font-weight:700; font-size:11px; letter-spacing:.4px;
-    margin:2px 0 4px;}
+    margin:2px 0 4px; text-align:center;}
   .cards{display:flex; align-items:center; gap:0; min-height:88px;}
-  .hands{display:flex; gap:26px; flex-wrap:wrap;}
+  .hands{display:flex; gap:26px; flex-wrap:wrap; justify-content:center;}
   .hand .total{color:#f6f2c8; font-weight:800; font-size:17px; margin-left:10px;}
   .hand .note{font-weight:700; font-size:12px; margin-top:3px;}
   .hand .note.win{color:#bff0bf;} .hand .note.other{color:#f0c0c0;}
@@ -77,7 +77,7 @@
   .card.back::after{content:""; position:absolute; inset:6px; border-radius:4px;
     border:1px solid #7f97c8;}
   .dfinal{color:#f6f2c8; font-weight:800; font-size:15px; margin-left:12px;}
-  .row{display:flex; align-items:center;}
+  .row{display:flex; align-items:center; justify-content:center;}
 
   /* ---- EV read-out ---- */
   .readout{background:var(--panel); padding:9px 14px; flex:0 0 auto;}
@@ -1129,7 +1129,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 14 · split display + bigger cards";
+const BUILD = "serverless 15 · centered hands";
 window.LBJ = { App, BUILD };
 })();
 </script>
