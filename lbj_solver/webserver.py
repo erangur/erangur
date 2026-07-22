@@ -29,9 +29,9 @@ Then open the printed URL in Safari and *Add to Home Screen*.
 import argparse
 import json
 import os
-import sys
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import selectors
+import socket
+import time
 
 from .cli import parse_card, parse_hand
 from .config import GameConfig
@@ -43,7 +43,7 @@ from .solution import Solution
 from .strategy import describe_set
 
 # Bump on every server-behaviour change so a phone can confirm what it runs.
-_BUILD = "3 · single-thread + socket-timeout"
+_BUILD = "4 · non-blocking event loop"
 
 _HERE = os.path.dirname(__file__)
 _INDEX = os.path.join(_HERE, "web", "index.html")
@@ -209,7 +209,6 @@ class App:
     def __init__(self, config=None):
         self.solution = Solution.load_or_solve(MultiplierModel.empirical(),
                                                 config or GameConfig())
-        self.lock = threading.Lock()
         self._new_session()
 
     def _new_session(self):
@@ -309,101 +308,218 @@ _ROUTES = {
 }
 
 
-def _make_handler(app):
-    class Handler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-        # Single-threaded: a browser can open an idle connection (preconnect)
-        # and send nothing, which would otherwise block the one accept loop
-        # forever. A socket timeout lets that connection self-close so real
-        # requests get served. Localhost requests complete in milliseconds, so
-        # this never interrupts a legitimate one.
-        timeout = 5
+_STATUS = {200: "OK", 400: "Bad Request", 404: "Not Found",
+           405: "Method Not Allowed", 500: "Internal Server Error"}
 
-        def log_message(self, *_a):        # quiet; this runs on a phone
-            pass
 
-        def _send(self, code, body, ctype="application/json"):
-            data = body if isinstance(body, bytes) else body.encode("utf-8")
-            # One request per connection. HTTP keep-alive reuse hangs on the
-            # cut-down Python that ships in iOS hosts (a-Shell/Pythonista): the
-            # first request on a fresh connection works, the second never
-            # returns. Closing each connection keeps every request "the first".
-            self.close_connection = True
-            self.send_response(code)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Connection", "close")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
+def _response(code, body, ctype):
+    """A complete HTTP/1.1 response as bytes. Always closes the connection."""
+    if not isinstance(body, (bytes, bytearray)):
+        body = body.encode("utf-8")
+    head = (
+        f"HTTP/1.1 {code} {_STATUS.get(code, 'OK')}\r\n"
+        f"Content-Type: {ctype}\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-store\r\n"
+        "\r\n"
+    ).encode("latin1")
+    return head + bytes(body)
 
-        def do_GET(self):
-            path = self.path.split("?", 1)[0]
-            if path in ("/", "/index.html"):
-                try:
-                    with open(_INDEX, "rb") as fh:
-                        html = fh.read()
-                except OSError:
-                    self._send(500, b"index.html missing", "text/plain")
-                    return
-                self._send(200, html, "text/html; charset=utf-8")
-                return
-            self._send(404, b"not found", "text/plain")
 
-        def do_POST(self):
-            path = self.path.split("?", 1)[0]
-            method = _ROUTES.get(path)
-            if method is None:
-                self._send(404, b'{"error":"not found"}')
-                return
-            length = int(self.headers.get("Content-Length") or 0)
-            raw = self.rfile.read(length) if length else b""
+def _dispatch(app, method, path, body):
+    """Route one parsed request to a response (never raises)."""
+    p = path.split("?", 1)[0]
+    if method == "GET":
+        if p in ("/", "/index.html"):
             try:
-                body = json.loads(raw) if raw else {}
-            except json.JSONDecodeError:
-                self._send(400, b'{"error":"bad json"}')
-                return
-            with app.lock:
+                with open(_INDEX, "rb") as fh:
+                    return _response(200, fh.read(), "text/html; charset=utf-8")
+            except OSError:
+                return _response(500, b"index.html missing", "text/plain")
+        return _response(404, b"not found", "text/plain")
+    if method == "POST":
+        name = _ROUTES.get(p)
+        if name is None:
+            return _response(404, b'{"error":"not found"}', "application/json")
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            return _response(400, b'{"error":"bad json"}', "application/json")
+        try:
+            result = getattr(app, name)(data)
+        except Exception as e:  # one bad request must never kill the server
+            return _response(500, json.dumps({"error": str(e)}), "application/json")
+        return _response(200, json.dumps(result), "application/json")
+    return _response(405, b"method not allowed", "text/plain")
+
+
+class _Conn:
+    """Per-connection parse/serve state held by the event loop."""
+    __slots__ = ("sock", "inbuf", "outbuf", "last")
+
+    def __init__(self, sock, now):
+        self.sock = sock
+        self.inbuf = bytearray()
+        self.outbuf = b""
+        self.last = now
+
+    def parse(self):
+        """``(method, path, body)`` once the whole request is buffered, else None."""
+        sep = self.inbuf.find(b"\r\n\r\n")
+        if sep == -1:
+            return None
+        lines = bytes(self.inbuf[:sep]).decode("latin1").split("\r\n")
+        try:
+            method, path, _ = lines[0].split(" ", 2)
+        except ValueError:
+            return "", "", b""            # malformed request line; dispatch 4xx
+        clen = 0
+        for line in lines[1:]:
+            k, _, v = line.partition(":")
+            if k.strip().lower() == "content-length":
                 try:
-                    result = getattr(app, method)(body)
-                except Exception as e:  # never take the whole server down
-                    self._send(500, json.dumps({"error": str(e)}))
-                    return
-            self._send(200, json.dumps(result))
+                    clen = int(v.strip())
+                except ValueError:
+                    clen = 0
+        body = self.inbuf[sep + 4:]
+        if len(body) < clen:
+            return None                   # body still on the wire
+        return method, path, bytes(body[:clen])
 
-    return Handler
 
+def _listen_sockets(host, port):
+    """Bind IPv4 and (best-effort) IPv6 so ``http://localhost`` is fast either way.
 
-class _Server(HTTPServer):
-    """Single-threaded server.
-
-    ``ThreadingHTTPServer`` fails on the iOS Python hosts (a-Shell/Pythonista):
-    their sandboxed sockets don't survive the file-descriptor hand-off to a
-    worker thread, so every worker dies with ``OSError: [Errno 9] Bad file
-    descriptor`` and its request never completes. Handling requests in the
-    accepting thread avoids the hand-off entirely; with ``Connection: close``
-    each request is short, so serial handling is fine for one player.
+    A browser resolving ``localhost`` may try ``::1`` before ``127.0.0.1``; if we
+    listen on only one family the other attempt stalls (Happy-Eyeballs fallback),
+    which surfaces as a multi-second page load. Binding both removes the stall.
     """
+    families = [(socket.AF_INET, host)]
+    if host == "127.0.0.1":
+        families.append((socket.AF_INET6, "::1"))
+    elif host == "0.0.0.0":
+        families.append((socket.AF_INET6, "::"))
+    socks = []
+    for family, addr in families:
+        try:
+            s = socket.socket(family, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if family == socket.AF_INET6:
+                try:
+                    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                except OSError:
+                    pass
+            s.bind((addr, port))
+            s.listen(64)
+            s.setblocking(False)
+            socks.append(s)
+        except OSError:
+            pass          # e.g. IPv6 unavailable in the sandbox — IPv4 suffices
+    if not socks:
+        raise OSError(f"could not bind {host}:{port}")
+    return socks
 
-    def handle_error(self, request, client_address):
-        # A client hanging up (or a speculative connection being reset) is
-        # normal on a phone; don't spew a traceback for it.
-        sys.stderr.write(f"(dropped connection from {client_address[0]})\n")
+
+def _close(sel, sock):
+    try:
+        sel.unregister(sock)
+    except (KeyError, ValueError):
+        pass
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def _accept(sel, lsock):
+    try:
+        csock, _addr = lsock.accept()
+    except OSError:
+        return
+    csock.setblocking(False)
+    try:
+        csock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        pass
+    sel.register(csock, selectors.EVENT_READ, _Conn(csock, time.monotonic()))
+
+
+def _flush(sel, conn):
+    try:
+        sent = conn.sock.send(conn.outbuf)
+    except (BlockingIOError, InterruptedError):
+        return
+    except OSError:
+        _close(sel, conn.sock)
+        return
+    conn.outbuf = conn.outbuf[sent:]
+    conn.last = time.monotonic()
+    if not conn.outbuf:
+        _close(sel, conn.sock)            # Connection: close — one shot, done
+
+
+def _read(sel, app, conn):
+    try:
+        chunk = conn.sock.recv(65536)
+    except (BlockingIOError, InterruptedError):
+        return
+    except OSError:
+        _close(sel, conn.sock)
+        return
+    if not chunk:                         # client closed
+        _close(sel, conn.sock)
+        return
+    conn.inbuf += chunk
+    conn.last = time.monotonic()
+    if len(conn.inbuf) > 2_000_000:       # runaway-request guard
+        _close(sel, conn.sock)
+        return
+    parsed = conn.parse()
+    if parsed is None:
+        return                            # need more bytes
+    method, path, body = parsed
+    conn.outbuf = _dispatch(app, method, path, body)
+    sel.modify(conn.sock, selectors.EVENT_WRITE, conn)
+    _flush(sel, conn)
+
+
+def _reap(sel, idle):
+    """Drop connections idle longer than ``idle`` seconds (dataless preconnects)."""
+    now = time.monotonic()
+    stale = [k.fileobj for k in list(sel.get_map().values())
+             if k.data is not None and now - k.data.last > idle]
+    for sock in stale:
+        _close(sel, sock)
 
 
 def run(config=None, host="127.0.0.1", port=8000):
     app = App(config)
-    server = _Server((host, port), _make_handler(app))
-    shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
+    listeners = _listen_sockets(host, port)
+    sel = selectors.DefaultSelector()
+    for ls in listeners:
+        sel.register(ls, selectors.EVENT_READ, None)   # data=None marks a listener
+    shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     print(f"Lightning Blackjack web app (build {_BUILD})", flush=True)
     print(f"serving at http://{shown}:{port}", flush=True)
     print("Open that in Safari, then Share → Add to Home Screen.", flush=True)
     print("Ctrl-C to stop.", flush=True)
     try:
-        server.serve_forever()
+        while True:
+            for key, _mask in sel.select(timeout=5.0):
+                if key.data is None:               # a listening socket
+                    _accept(sel, key.fileobj)
+                elif key.data.outbuf:              # mid-response
+                    _flush(sel, key.data)
+                else:                              # request bytes arriving
+                    _read(sel, app, key.data)
+            _reap(sel, idle=15.0)
     except KeyboardInterrupt:
         print("\nbye")
-        server.shutdown()
+    finally:
+        sel.close()
+        for ls in listeners:
+            ls.close()
 
 
 def main(argv=None):
