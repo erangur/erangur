@@ -778,12 +778,13 @@ function* playSplitHand(ev, pairRank, up, handNo, partner) {
   }
 }
 
-function canBust(nd) { return !(nd.soft || nd.total <= 11); }
 function autoAction(nd, carry, enabled, threshold) {
   const actions = nd.actions, best = nd.best;
   if (actions.length === 1) return [best.name, "only legal option"];
   if (!enabled) return [null, null];
-  if (best.name === HIT && !canBust(nd)) return [HIT, "risk-free · cannot bust"];
+  // (No "risk-free" auto-hit tier: every real choice goes through the
+  //  conviction gate below, so a hit is only auto-played when its EV lead
+  //  over the next-best action clears the threshold.)
   const ordered = actions.slice().sort((a, b) => b.ev - a.ev);
   const margin = ordered[0].ev - ordered[1].ev;
   const norm = margin / Math.max(1, carry);
@@ -1121,7 +1122,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 12 · header cleanup + fill space";
+const BUILD = "serverless 13 · conviction-only auto-play";
 window.LBJ = { App, BUILD };
 })();
 </script>
