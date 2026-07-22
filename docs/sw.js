@@ -5,7 +5,9 @@
  * that page on first load so the Add-to-Home-Screen app keeps working offline
  * — even when the little Python loader that first served it is long gone. */
 const CACHE = "lbj-v1";
-const ASSETS = ["/", "/index.html", "/manifest.webmanifest"];
+// Relative to the worker's scope, so this works whether the app is served from
+// "/" (localhost) or a project subpath like "/erangur/" (GitHub Pages).
+const ASSETS = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -40,7 +42,7 @@ self.addEventListener("fetch", (e) => {
         } catch (_) { /* ignore */ }
         return res;
       }).catch(() =>
-        caches.match("/").then((h) => h || caches.match("/index.html"))
+        caches.match("./").then((h) => h || caches.match("./index.html"))
       );
     })
   );

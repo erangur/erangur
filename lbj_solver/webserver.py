@@ -35,7 +35,8 @@ _BUILD = "7 · bare-socket static loader"
 # single-threaded accept loop for more than this long.
 _SOCK_TIMEOUT = 4
 
-_WEB = os.path.join(os.path.dirname(__file__), "web")
+# The web app lives at the repo root in ``docs/`` (also GitHub Pages' source).
+_WEB = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "docs"))
 
 _CTYPES = {
     ".html": "text/html; charset=utf-8",
