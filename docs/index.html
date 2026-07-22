@@ -1110,7 +1110,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 2 · clear board on round end";
+const BUILD = "serverless 3 · 2-card hand entry";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1283,14 +1283,15 @@ function renderSetup(){
   const r2 = document.createElement("div"); r2.className="setuprow";
   r2.innerHTML = `<span class="lab">HAND</span>`;
   const inp = document.createElement("input"); inp.className="hand"; inp.value=handStr;
-  inp.placeholder="10,6"; inp.oninput=e=>{ handStr=e.target.value; };
+  inp.placeholder="tap 2 cards"; inp.readOnly=true;
   r2.appendChild(inp);
   box.appendChild(r2);
   const kr = document.createElement("div"); kr.className="keyrow";
   kr.style.marginBottom="6px";
   CARD_KEYS.forEach(([lab])=>{
     const b=document.createElement("button"); b.className="key"; b.textContent=lab;
-    b.onclick=()=>{ handStr = handStr ? handStr+","+lab : lab;
+    b.onclick=()=>{ if(handStr.split(",").filter(x=>x).length>=2) return;  // a starting hand is 2 cards
+                    handStr = handStr ? handStr+","+lab : lab;
                     document.querySelector("input.hand").value = handStr; };
     kr.appendChild(b);
   });
