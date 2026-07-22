@@ -1129,7 +1129,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 15 · centered hands";
+const BUILD = "serverless 16 · setup preview on felt";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1143,6 +1143,16 @@ const CARD_KEYS = [["A",11],["2",2],["3",3],["4",4],["5",5],["6",6],["7",7],
 const DEALER_KEYS = [["17",17],["18",18],["19",19],["20",20],["21",21],["Bust","bust"]];
 // A ten-valued key represents K/Q/J/10, so show all four; other keys unchanged.
 function keyLabel(lab){ return lab==="10" ? "K,Q,J,T" : lab; }
+// rank value for each hand/upcard key token, used by the setup preview
+const RANK_OF = {}; CARD_KEYS.forEach(([lab,rank])=>{ RANK_OF[lab]=rank; });
+// Build a felt "table" from the in-progress setup picks so they show before Deal.
+function setupTable(){
+  const cards = handStr ? handStr.split(",").filter(x=>x).map(t=>RANK_OF[t]) : [];
+  const tier = (SNAP && SNAP.tiers) ? SNAP.tiers.find(t=>t.BJ===selBj) : null;
+  return { set: tier||null, dealer_up: (selUp!=null ? RANK_OF[selUp] : null),
+           dealer_final: null, hands: cards.length ? [{cards, label:"YOU", note:""}] : [] };
+}
+function renderPreview(){ renderFelt(setupTable()); }
 function dockSep(){ const d=document.createElement("div"); d.className="dockdiv"; return d; }
 let SNAP = null;
 let selBj = null, selUp = "10", handStr = "";
@@ -1308,7 +1318,7 @@ function renderSetup(){
   inp.placeholder="tap cards"; inp.readOnly=true;
   r2.appendChild(inp);
   const clr=document.createElement("button"); clr.className="btn-clear"; clr.textContent="Clear";
-  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; };
+  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; renderPreview(); };
   r2.appendChild(clr);
   box.appendChild(r2);
   // HAND keys — two rows of five so the buttons are big
@@ -1317,7 +1327,8 @@ function renderSetup(){
     b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
     b.onclick=()=>{ if(handStr.split(",").filter(x=>x).length>=2) return;  // a starting hand is 2 cards
                     handStr = handStr ? handStr+","+lab : lab;
-                    document.querySelector("input.hand").value = handStr; };
+                    document.querySelector("input.hand").value = handStr;
+                    renderPreview(); };
     return b;
   };
   [[0,6],[6,10]].forEach(([a,z])=>{
@@ -1344,6 +1355,7 @@ function renderSetup(){
   // DEAL
   const deal=document.createElement("button"); deal.className="deal"; deal.textContent="DEAL";
   deal.onclick=doDeal; box.appendChild(deal);
+  renderPreview();   // show the current SET/HAND/UPCARD picks on the felt
 }
 function renderPlay(snap){
   const box = document.getElementById("dockBody"); box.innerHTML="";
@@ -1402,9 +1414,8 @@ function apply(snap){
   document.getElementById("situation").textContent = snap.situation;
   document.getElementById("dockTitle").textContent = snap.dock_title;
   renderChips(snap.evs);
-  renderFelt(snap.table);
   if(snap.phase==="setup"){ document.getElementById("dockTitle").textContent="NEW ROUND"; renderSetup(); }
-  else renderPlay(snap);
+  else { renderFelt(snap.table); renderPlay(snap); }
   const log = document.getElementById("log");
   log.textContent = snap.log.join("\n");
   log.scrollTop = log.scrollHeight;
