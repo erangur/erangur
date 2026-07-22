@@ -92,6 +92,7 @@
   .setuprow .lab{color:var(--muted); font-weight:700; font-size:11px; width:56px;
     flex:0 0 auto;}
   .setbody{color:var(--muted); font-size:12px;}
+  .dockdiv{border-top:1px solid var(--line); margin:9px 0 7px;}
   .tog{
     background:var(--bar); color:var(--key-ink); border:1px solid var(--line);
     border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700;
@@ -1116,7 +1117,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 8 · card keypad rows";
+const BUILD = "serverless 9 · setup dividers";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1130,6 +1131,7 @@ const CARD_KEYS = [["A",11],["2",2],["3",3],["4",4],["5",5],["6",6],["7",7],
 const DEALER_KEYS = [["17",17],["18",18],["19",19],["20",20],["21",21],["Bust","bust"]];
 // A ten-valued key represents K/Q/J/10, so show all four; other keys unchanged.
 function keyLabel(lab){ return lab==="10" ? "K,Q,J,T" : lab; }
+function dockSep(){ const d=document.createElement("div"); d.className="dockdiv"; return d; }
 let SNAP = null;
 let selBj = null, selUp = "10", handStr = "";
 
@@ -1284,6 +1286,7 @@ function renderSetup(){
     r1.appendChild(b);
   });
   box.appendChild(r1);
+  box.appendChild(dockSep());
   // HAND row: label + read-only display + Clear, all on one line
   const r2 = document.createElement("div"); r2.className="setuprow";
   r2.innerHTML = `<span class="lab">HAND</span>`;
@@ -1308,6 +1311,7 @@ function renderSetup(){
     CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(handKey(lab)));
     box.appendChild(kr);
   });
+  box.appendChild(dockSep());
   // UPCARD — label line, then two rows of five
   const ul=document.createElement("div"); ul.className="setuprow";
   ul.innerHTML = `<span class="lab">UPCARD</span>`;
