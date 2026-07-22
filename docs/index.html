@@ -57,20 +57,20 @@
   .felt .setind .body{color:#9cc0aa; font-size:11px;}
   .rowlabel{color:#a9c7b5; font-weight:700; font-size:11px; letter-spacing:.4px;
     margin:2px 0 4px;}
-  .cards{display:flex; align-items:center; gap:0; min-height:66px;}
-  .hands{display:flex; gap:22px; flex-wrap:wrap;}
-  .hand .total{color:#f6f2c8; font-weight:800; font-size:15px; margin-left:10px;}
+  .cards{display:flex; align-items:center; gap:0; min-height:88px;}
+  .hands{display:flex; gap:26px; flex-wrap:wrap;}
+  .hand .total{color:#f6f2c8; font-weight:800; font-size:17px; margin-left:10px;}
   .hand .note{font-weight:700; font-size:12px; margin-top:3px;}
   .hand .note.win{color:#bff0bf;} .hand .note.other{color:#f0c0c0;}
   .card{
-    width:44px; height:62px; border-radius:7px; background:#fbfbf7;
-    border:1px solid #d8ddce; margin-left:-14px; position:relative;
-    box-shadow:1px 2px 3px rgba(0,0,0,.35); flex:0 0 auto;
+    width:58px; height:82px; border-radius:8px; background:#fbfbf7;
+    border:1px solid #d8ddce; margin-left:-16px; position:relative;
+    box-shadow:1px 2px 4px rgba(0,0,0,.35); flex:0 0 auto;
   }
   .card:first-child{margin-left:0;}
-  .card .r{position:absolute; top:3px; left:5px; font-size:12px; font-weight:800;}
+  .card .r{position:absolute; top:4px; left:6px; font-size:15px; font-weight:800;}
   .card .s{position:absolute; inset:0; display:flex; align-items:center;
-    justify-content:center; font-size:22px; padding-top:6px;}
+    justify-content:center; font-size:30px; padding-top:8px;}
   .card.black .r,.card.black .s{color:#16110a;}
   .card.red .r,.card.red .s{color:#c0392b;}
   .card.back{background:#2c4a86; border-color:#16294d;}
@@ -1010,7 +1010,14 @@ class View {
     this.prompt = `Auto-played ${ACTION_LABEL[action]} — ${reason}`;
     this._log(`  auto ${ACTION_LABEL[action]} — ${reason} (hand total ${node.total} vs ${upLabelV(node.up)})`);
   }
-  _onCard(ctx) { this._card_ctx = ctx; this.dock_title = "WHICH CARD CAME?"; this.prompt = ctx.label; }
+  _onCard(ctx) {
+    this._card_ctx = ctx;
+    // As soon as a split hand needs a card, show BOTH split hands (each with
+    // the pair card) so the split is visible before any cards are entered.
+    if (ctx.hand_no) this._ensureSplitHands();
+    this.dock_title = "WHICH CARD CAME?";
+    this.prompt = ctx.label;
+  }
   _onDealer() { this.dock_title = "DEALER'S FINAL TOTAL"; this.prompt = ""; }
   _onRoundDone(summary) {
     const dealer = summary.dealer;
@@ -1122,7 +1129,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 13 · conviction-only auto-play";
+const BUILD = "serverless 14 · split display + bigger cards";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1244,7 +1251,9 @@ function renderFelt(t){
   const pl = document.createElement("div"); pl.className="rowlabel";
   pl.style.marginTop="12px"; pl.textContent="YOU"; felt.appendChild(pl);
   const hands = document.createElement("div"); hands.className="hands";
-  for(const h of t.hands){
+  // On a split, show hand 1 (played first) on the RIGHT, hand 2 on the left.
+  const handList = t.hands.length===2 ? [t.hands[1], t.hands[0]] : t.hands;
+  for(const h of handList){
     const hd = document.createElement("div"); hd.className="hand";
     const top = document.createElement("div"); top.className="row";
     const cc = document.createElement("div"); cc.className="cards";
