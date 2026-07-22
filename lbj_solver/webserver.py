@@ -42,6 +42,9 @@ from .session import Session, hand_str
 from .solution import Solution
 from .strategy import describe_set
 
+# Bump on every server-behaviour change so a phone can confirm what it runs.
+_BUILD = "3 · single-thread + socket-timeout"
+
 _HERE = os.path.dirname(__file__)
 _INDEX = os.path.join(_HERE, "web", "index.html")
 
@@ -309,6 +312,12 @@ _ROUTES = {
 def _make_handler(app):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        # Single-threaded: a browser can open an idle connection (preconnect)
+        # and send nothing, which would otherwise block the one accept loop
+        # forever. A socket timeout lets that connection self-close so real
+        # requests get served. Localhost requests complete in milliseconds, so
+        # this never interrupts a legitimate one.
+        timeout = 5
 
         def log_message(self, *_a):        # quiet; this runs on a phone
             pass
@@ -386,9 +395,10 @@ def run(config=None, host="127.0.0.1", port=8000):
     app = App(config)
     server = _Server((host, port), _make_handler(app))
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
-    print(f"Lightning Blackjack web app serving at http://{shown}:{port}")
-    print("Open that in Safari, then Share → Add to Home Screen.")
-    print("Ctrl-C to stop.")
+    print(f"Lightning Blackjack web app (build {_BUILD})", flush=True)
+    print(f"serving at http://{shown}:{port}", flush=True)
+    print("Open that in Safari, then Share → Add to Home Screen.", flush=True)
+    print("Ctrl-C to stop.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
