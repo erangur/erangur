@@ -170,6 +170,18 @@
   .legend{display:flex; gap:16px; font-size:12px; margin-top:10px; color:var(--muted);}
   .legend .dot{display:inline-block; width:11px; height:11px; border-radius:3px;
     margin-right:5px; vertical-align:-1px;}
+
+  /* ---- debug panel ---- */
+  .dbgtitle{color:var(--muted); font-weight:700; font-size:11px; letter-spacing:.5px;
+    margin:12px 0 5px; display:flex; align-items:center; gap:10px;}
+  .dbgrefresh{background:var(--key); color:var(--key-ink); border-radius:8px;
+    padding:4px 9px; font-size:11px; font-weight:700;}
+  .dbglog{background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; margin:0; max-height:190px; overflow:auto; font-size:11.5px;
+    line-height:1.5; white-space:pre-wrap; word-break:break-word;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    -webkit-overflow-scrolling:touch;}
+  .dbglog .err{color:var(--bad);} .dbglog .ok{color:var(--good);}
 </style>
 </head>
 <body>
@@ -182,6 +194,7 @@
     <button class="hbtn" id="storeBtn" onclick="toggleStore()">Store: off</button>
     <button class="hbtn" onclick="openStats()">📊</button>
     <button class="hbtn" onclick="openSettings()">⚙</button>
+    <button class="hbtn" id="dbgBtn" onclick="openDebug()">🐞</button>
     <button class="hbtn reset" onclick="doReset()">Reset</button>
   </header>
 
@@ -242,6 +255,18 @@
     </div>
   </div>
 
+  <!-- debug modal -->
+  <div class="backdrop" id="debugBack">
+    <div class="modal">
+      <h2>Debug log <span id="dbgBuild" style="color:var(--muted); font-size:12px; font-weight:400;"></span></h2>
+      <div class="dbgtitle">CLIENT (this browser)</div>
+      <pre class="dbglog" id="dbgClient"></pre>
+      <div class="dbgtitle">SERVER (python) <button class="dbgrefresh" onclick="loadServerLog()">refresh</button></div>
+      <pre class="dbglog" id="dbgServer"></pre>
+      <button class="close" onclick="closeModal('debugBack')">Close</button>
+    </div>
+  </div>
+
 <script>
 "use strict";
 const SUITS = [["♠","black"],["♣","black"],["♥","red"],["♦","red"]];
@@ -250,6 +275,25 @@ const CARD_KEYS = [["A",11],["2",2],["3",3],["4",4],["5",5],["6",6],["7",7],
 const DEALER_KEYS = [["17",17],["18",18],["19",19],["20",20],["21",21],["Bust","bust"]];
 let SNAP = null;
 let selBj = null, selUp = "10", handStr = "";
+
+/* ---- client-side debug log ---- */
+const CLIENT_LOG = [];
+function now(){ return new Date().toTimeString().slice(0,8); }
+function dbg(msg, cls){
+  CLIENT_LOG.push({t:now(), msg, cls});
+  if(CLIENT_LOG.length > 200) CLIENT_LOG.shift();
+  console.log("[lbj] "+msg);
+  if(document.getElementById("debugBack").classList.contains("show")) renderClientLog();
+}
+function renderClientLog(){
+  const el = document.getElementById("dbgClient");
+  el.innerHTML = CLIENT_LOG.map(e=>{
+    const c = e.cls ? ` class="${e.cls}"` : "";
+    const safe = e.msg.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    return `<span${c}>${e.t}  ${safe}</span>`;
+  }).join("\n");
+  el.scrollTop = el.scrollHeight;
+}
 
 /* ---- card / hand helpers (mirror of cards.py, for display totals) ---- */
 function addCard(total, soft, r){
@@ -275,14 +319,22 @@ function totalText(cards){
 async function api(path, body){
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), 15000);
+  const t0 = performance.now();
+  dbg("→ POST "+path);
   try{
     const r = await fetch(path, {method:"POST", cache:"no-store", signal:ctrl.signal,
                                  headers:{"Content-Type":"application/json"},
                                  body: JSON.stringify(body||{})});
+    const ms = (performance.now()-t0).toFixed(0);
     if(!r.ok) throw new Error("HTTP "+r.status);
-    return await r.json();
+    const data = await r.json();
+    dbg("✓ "+path+"  "+ms+" ms", "ok");
+    return data;
   }catch(e){
-    const msg = e.name==="AbortError" ? "timed out (is the server running?)" : e.message;
+    const ms = (performance.now()-t0).toFixed(0);
+    const msg = e.name==="AbortError" ? "TIMED OUT after "+ms+" ms (is the server running?)"
+                                      : e.message+"  ("+ms+" ms)";
+    dbg("✗ "+path+"  "+msg, "err");
     const el = document.getElementById("situation");
     if(el) el.textContent = "⚠ "+path+" — "+msg;
     throw e;
@@ -493,6 +545,26 @@ async function onStartCarry(){
 function openSettings(){ document.getElementById("settingsBack").classList.add("show"); }
 function closeModal(id){ document.getElementById(id).classList.remove("show"); }
 
+/* ---- debug panel ---- */
+function openDebug(){
+  document.getElementById("debugBack").classList.add("show");
+  renderClientLog();
+  loadServerLog();
+}
+async function loadServerLog(){
+  const el = document.getElementById("dbgServer");
+  el.textContent = "loading…";
+  try{
+    const r = await fetch("/api/debug", {cache:"no-store"});
+    const s = await r.json();
+    document.getElementById("dbgBuild").textContent = "· server build "+s.build;
+    el.textContent = s.lines.join("\n");
+    el.scrollTop = el.scrollHeight;
+  }catch(e){
+    el.textContent = "could not reach server: "+e.message;
+  }
+}
+
 /* ---- stats ---- */
 async function openStats(){
   document.getElementById("statsBack").classList.add("show");
@@ -528,6 +600,7 @@ function mkBar(cls, p, maxp){
 }
 
 /* boot */
+dbg("page loaded — fetching initial state");
 refresh();
 </script>
 </body>

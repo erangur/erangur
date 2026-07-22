@@ -29,9 +29,13 @@ the icon.
    ```
    python -m lbj_solver.webserver
    ```
-   It prints `... serving at http://localhost:8000`.
+   It prints its build number and `serving at http://127.0.0.1:8000`, then a
+   **live request log** — every request the phone makes scrolls past here, so
+   keep a-Shell handy if something misbehaves.
 
-4. **Open it**: switch to Safari and go to `http://localhost:8000`.
+4. **Open it**: switch to Safari and go to **`http://127.0.0.1:8000`**
+   (use the numeric address, *not* `localhost` — it connects faster and avoids an
+   IPv6 lookup detour).
 
 5. **Install the icon** (first time only): Share → **Add to Home Screen**.
    From then on, tap the icon *after* step 3 to open the app full-screen.
@@ -50,6 +54,15 @@ python -m lbj_solver.webserver --host 0.0.0.0   # also reachable from other devi
 works without launching anything first. iOS may prompt for "Local Network" access
 the first time you use `0.0.0.0`; the default `127.0.0.1` (this-device-only) avoids
 that prompt.
+
+## If something misbehaves
+
+- Tap the **🐞** button in the header. It shows two logs: **CLIENT** (every
+  request Safari made, with timing, and any error/timeout) and **SERVER** (the
+  same live log the a-Shell console prints, pulled over `/api/debug`). Between the
+  two you can see exactly where a stuck button or slow load is happening.
+- The 🐞 panel's header also shows the **server build** it's talking to — handy
+  after an `lg2 pull` to confirm the new code is actually running.
 
 ## Notes
 
