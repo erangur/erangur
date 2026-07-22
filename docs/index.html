@@ -1110,7 +1110,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 3 · 2-card hand entry";
+const BUILD = "serverless 4 · reset setup after round";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1348,6 +1348,9 @@ function renderPlay(snap){
   }
 }
 function apply(snap){
+  if(SNAP && SNAP.phase === "play" && snap.phase === "setup"){
+    selBj = null; selUp = "10"; handStr = "";   // fresh setup after a finished round
+  }
   SNAP = snap;
   document.getElementById("carry").textContent = "Carry "+snap.carry+"×";
   document.getElementById("round").textContent = "Round "+snap.round;
