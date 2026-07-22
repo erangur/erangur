@@ -314,9 +314,15 @@ def _make_handler(app):
 
         def _send(self, code, body, ctype="application/json"):
             data = body if isinstance(body, bytes) else body.encode("utf-8")
+            # One request per connection. HTTP keep-alive reuse hangs on the
+            # cut-down Python that ships in iOS hosts (a-Shell/Pythonista): the
+            # first request on a fresh connection works, the second never
+            # returns. Closing each connection keeps every request "the first".
+            self.close_connection = True
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Connection", "close")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(data)
