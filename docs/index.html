@@ -125,7 +125,9 @@
   .cardkeys .key{padding:13px 0;}
   /* card-value keys share the row equally; the ten-value (K/Q/J/10) is 4x wide */
   .cardbtn{flex:1 1 0; min-width:0;}
-  .cardbtn.ten{flex-grow:4;}
+  /* row 2 is 7,8,9 + ten; grow:3 makes those three match the six on row 1,
+     and the ten fills the remaining three slots */
+  .cardbtn.ten{flex-grow:3;}
   /* SET tier buttons fill their row so all fit on one line */
   .setbtn{flex:1 1 0; min-width:0; padding-left:3px; padding-right:3px; font-size:12px; white-space:nowrap;}
   .dealerkeys{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
@@ -1117,7 +1119,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 9 · setup dividers";
+const BUILD = "serverless 10 · even card keys";
 window.LBJ = { App, BUILD };
 })();
 </script>
