@@ -32,7 +32,12 @@
     background:var(--bar); display:flex; align-items:center; gap:12px;
     padding:10px 14px; flex:0 0 auto;
   }
-  .carry{font-size:24px; font-weight:800; color:var(--gold); line-height:1;}
+  .carry{font-size:24px; font-weight:800; color:var(--gold); line-height:1;
+    display:inline-block; transform-origin:left center;}
+  @keyframes carryUp{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--good);}100%{transform:scale(1);}}
+  @keyframes carryDown{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--danger);}100%{transform:scale(1);}}
+  .carry.flash-up{animation:carryUp .55s ease;}
+  .carry.flash-down{animation:carryDown .55s ease;}
   .round{font-size:13px; color:var(--muted);}
   header .spacer{flex:1;}
   .hbtn{
@@ -219,10 +224,7 @@
     <div id="dockBody"></div>
   </div>
 
-  <div class="history">
-    <div class="lab">HISTORY</div>
-    <div class="log" id="log"></div>
-  </div>
+  <div style="flex:1 1 auto;"></div>
 
   <!-- settings modal -->
   <div class="backdrop" id="settingsBack">
@@ -241,6 +243,8 @@
         <label>Starting carry</label>
         <input type="number" min="1" max="25" id="startCarry" onchange="onStartCarry()">
       </div>
+      <div class="dbgtitle" style="margin-top:14px;">HISTORY</div>
+      <div class="log" id="log" style="max-height:260px; flex:none;"></div>
       <button class="close" onclick="closeModal('settingsBack')">Close</button>
     </div>
   </div>
@@ -1119,7 +1123,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 10 · even card keys";
+const BUILD = "serverless 11 · carry flash + log in settings";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1373,11 +1377,19 @@ function renderPlay(snap){
   }
 }
 function apply(snap){
+  const prevCarry = SNAP ? SNAP.carry : null;
   if(SNAP && SNAP.phase === "play" && snap.phase === "setup"){
     selBj = null; selUp = "10"; handStr = "";   // fresh setup after a finished round
   }
   SNAP = snap;
-  document.getElementById("carry").textContent = "Carry "+snap.carry+"×";
+  const carryEl = document.getElementById("carry");
+  carryEl.textContent = "Carry "+snap.carry+"×";
+  if(prevCarry !== null && snap.carry !== prevCarry){
+    const dir = snap.carry === 1 ? "flash-down" : "flash-up";   // red back to 1×, green if a carry is held
+    carryEl.classList.remove("flash-up","flash-down");
+    void carryEl.offsetWidth;                                   // restart the animation
+    carryEl.classList.add(dir);
+  }
   document.getElementById("round").textContent = "Round "+snap.round;
   document.getElementById("situation").textContent = snap.situation;
   document.getElementById("dockTitle").textContent = snap.dock_title;
