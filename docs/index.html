@@ -37,8 +37,8 @@
     display:inline-block; transform-origin:left center;}
   @keyframes carryUp{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--good);}100%{transform:scale(1);}}
   @keyframes carryDown{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--danger);}100%{transform:scale(1);}}
-  .carry.flash-up{animation:carryUp .55s ease;}
-  .carry.flash-down{animation:carryDown .55s ease;}
+  .carry.flash-up{animation:carryUp .82s ease;}
+  .carry.flash-down{animation:carryDown .82s ease;}
   .round{font-size:13px; color:var(--muted);}
   header .spacer{flex:1;}
   .hbtn{
@@ -59,7 +59,7 @@
   .rowlabel{color:#a9c7b5; font-weight:700; font-size:11px; letter-spacing:.4px;
     margin:2px 0 4px; text-align:center;}
   .cards{display:flex; align-items:center; gap:0; min-height:88px;}
-  .hands{display:flex; gap:26px; flex-wrap:wrap; justify-content:center;}
+  .hands{display:flex; gap:26px; flex-wrap:wrap; justify-content:center; min-height:88px;}
   .hand .total{color:#f6f2c8; font-weight:800; font-size:17px; margin-left:10px;}
   .hand .note{font-weight:700; font-size:12px; margin-top:3px;}
   .hand .note.win{color:#bff0bf;} .hand .note.other{color:#f0c0c0;}
@@ -1130,7 +1130,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 18 · full height from load";
+const BUILD = "serverless 19 · stable table + slower flash";
 window.LBJ = { App, BUILD };
 })();
 </script>
