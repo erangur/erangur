@@ -1,0 +1,11 @@
+{
+  "name": "Lightning Blackjack",
+  "short_name": "Lightning BJ",
+  "description": "Offline Lightning Blackjack strategy solver.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101b16",
+  "theme_color": "#101b16"
+}

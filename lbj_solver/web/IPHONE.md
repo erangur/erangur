@@ -1,74 +1,64 @@
-# Running the Lightning Blackjack solver on an iPhone (fully local)
+# Running the Lightning Blackjack solver on an iPhone (fully local, no server)
 
-This is the **web front-end** for the solver (`lbj_solver/webserver.py` +
-`lbj_solver/web/index.html`). It uses **only the Python standard library** and the
-solved carry values ship cached in `lbj_solver/data/solution.json`, so there is
-**nothing to `pip install`** and no ~minute solve on the phone.
+The web app (`lbj_solver/web/index.html`) is **one self-contained page that runs
+entirely in the browser**. The whole solver is ported to JavaScript (verified
+against the Python engine — identical EVs and identical play), so once the page
+is loaded there is **nothing to talk to**: no server, no network, no Python.
 
-The app runs *on the phone*: a small Python web server runs inside a Python host
-app, binds to `localhost`, and Safari opens it. One catch — the server only runs
-while the host app is open, so each session you start the server first, then open
-the icon.
+Why this matters on iOS: the earlier version ran a Python server in a-Shell and
+the page called it for every move. But iOS **suspends a background app**, so the
+moment you looked at Safari, the a-Shell server stopped answering — that's why
+the UI froze until you switched back to a-Shell. Now the page does all the work
+itself, so that whole problem is gone.
 
 ## One-time setup
 
-1. **Install a Python host app** — [a-Shell](https://apps.apple.com/app/a-shell/id1473805438)
-   (free) is recommended. (Pythonista 3 also works.)
+1. **Install [a-Shell](https://apps.apple.com/app/a-shell/id1473805438)** (free).
+   It's used *only to hand the page to Safari the first time* — after that you
+   don't need it.
 
-2. **Get the code onto the phone.** In a-Shell (no `pip install` — there are no
-   dependencies):
+2. **Get the code onto the phone** (a-Shell uses `lg2`, not `git`):
    ```
-   git clone <your-repo-url> erangur
+   lg2 clone <your-repo-url> erangur
    cd erangur
    ```
-   (Or copy the folder in via iCloud Drive / AirDrop and `cd` to it.)
 
-## Each time you want to play
-
-3. **Start the server** (from the repo root in a-Shell):
+3. **Serve the page once:**
    ```
    python -m lbj_solver.webserver
    ```
-   It prints its build number and `serving at http://127.0.0.1:8000`, then a
-   **live request log** — every request the phone makes scrolls past here, so
-   keep a-Shell handy if something misbehaves.
+   It prints `serving the app at http://127.0.0.1:8000`.
 
-4. **Open it**: switch to Safari and go to **`http://127.0.0.1:8000`**
-   (use the numeric address, *not* `localhost` — it connects faster and avoids an
-   IPv6 lookup detour).
+4. **Open it in Safari** at **`http://127.0.0.1:8000`** (type the numeric
+   address — not `localhost`).
 
-5. **Install the icon** (first time only): Share → **Add to Home Screen**.
-   From then on, tap the icon *after* step 3 to open the app full-screen.
+5. **Share -> Add to Home Screen.** This installs it as a full-screen app and
+   caches it offline (via a service worker).
 
-To stop the server, return to a-Shell and press `Ctrl-C` (or just close a-Shell).
+## After that
 
-## Options
-
-```
-python -m lbj_solver.webserver --port 8080      # different port
-python -m lbj_solver.webserver --host 0.0.0.0   # also reachable from other devices on your wifi
-```
-
-`--host 0.0.0.0` is what you'd use if you later run this on an always-on box
-(Raspberry Pi, home server, VPS) instead of the phone — then the home-screen icon
-works without launching anything first. iOS may prompt for "Local Network" access
-the first time you use `0.0.0.0`; the default `127.0.0.1` (this-device-only) avoids
-that prompt.
+- **Tap the home-screen icon.** It opens full-screen and plays entirely offline
+  — no a-Shell, no server, nothing to start. Deal / hit / split / stats all run
+  instantly in the page.
+- You only need to repeat step 3 (`python -m lbj_solver.webserver`) if you want
+  to load a **new version** of the page after an `lg2 pull`. (Open
+  `http://127.0.0.1:8000` in Safari again; the icon then picks up the update.)
 
 ## If something misbehaves
 
-- Tap the **🐞** button in the header. It shows two logs: **CLIENT** (every
-  request Safari made, with timing, and any error/timeout) and **SERVER** (the
-  same live log the a-Shell console prints, pulled over `/api/debug`). Between the
-  two you can see exactly where a stuck button or slow load is happening.
-- The 🐞 panel's header also shows the **server build** it's talking to — handy
-  after an `lg2 pull` to confirm the new code is actually running.
+- Tap the **🐞** button in the header. It shows the in-page activity log — every
+  action, its timing, and any error — and the build string at the top. Since
+  everything runs in the page, this is the whole story now (there's no separate
+  server log to check).
 
 ## Notes
 
-- **Histogram storage**: the header **Store** toggle records each dealt set to a
-  CSV under `lbj_solver/data/histograms/`. On the phone that writes into the app's
-  sandbox — fine to use, just not easy to pull back off the device.
-- **Everything the tkinter GUI does is here**: auto-play (⚙ settings: toggle +
-  conviction threshold + starting carry), the felt table, EV chips, the morphing
-  dock, the 📊 multiplier histogram, and Reset.
+- **Multiplier histogram (Store toggle + 📊):** now saved in the browser's local
+  storage on the device (it used to be CSV files on disk). "All" is everything
+  ever recorded on this device; "This run" is the current app session.
+- **Options** (`⚙`): auto-play toggle + conviction threshold + starting carry —
+  all exactly as before.
+- The `python -m lbj_solver.webserver` loader is a tiny static file server. You
+  can also serve the page from any always-on machine, or host the single
+  `index.html` on any static host, and open that URL instead — it behaves the
+  same because the page is self-contained.

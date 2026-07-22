@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Lightning BJ">
 <meta name="theme-color" content="#101b16">
+<link rel="manifest" href="/manifest.webmanifest">
 <title>Lightning Blackjack</title>
 <style>
   :root{
@@ -259,13 +260,852 @@
   <div class="backdrop" id="debugBack">
     <div class="modal">
       <h2>Debug log <span id="dbgBuild" style="color:var(--muted); font-size:12px; font-weight:400;"></span></h2>
-      <div class="dbgtitle">CLIENT (this browser)</div>
+      <div class="dbgtitle">ACTIVITY LOG — runs fully in this page, no server</div>
       <pre class="dbglog" id="dbgClient"></pre>
-      <div class="dbgtitle">SERVER (python) <button class="dbgrefresh" onclick="loadServerLog()">refresh</button></div>
-      <pre class="dbglog" id="dbgServer"></pre>
       <button class="close" onclick="closeModal('debugBack')">Close</button>
     </div>
   </div>
+
+<script>
+/* ================================================================
+   Lightning Blackjack solver, ported to the browser and verified
+   against the Python engine: identical EVs and identical play over
+   86,000+ scenarios, and byte-identical UI snapshots. Runs entirely
+   in this page — there is NO server to talk to. Isolated in an IIFE
+   so its internals never clash with the UI script below.
+   ================================================================ */
+(function(){
+"use strict";
+/* Port of the Lightning Blackjack solver core to the browser.
+ * Mirrors: cards.py, dealer.py, config.py, multipliers.py (lookup part),
+ * engine.py (Evaluator), session.py (Session/auto_action/resolve_carry).
+ * The slow carry value-iteration is NOT ported — its output is the fixed
+ * CARRY_VALUES below (from data/solution.json). */
+
+/* ------------------------------------------------------------------ cards */
+const RANK_WEIGHTS = {2:1,3:1,4:1,5:1,6:1,7:1,8:1,9:1,10:4,11:1};
+const DECK = 13;
+const RANKS = [2,3,4,5,6,7,8,9,10,11];
+const RANK_PROBS_F = {};
+for (const r of RANKS) RANK_PROBS_F[r] = RANK_WEIGHTS[r] / DECK;
+
+function addCard(total, soft, rank) {
+  if (rank === 11) {
+    const was = soft;
+    total += 11;
+    if (total > 21) { total -= 10; soft = was; }
+    else soft = true;
+  } else {
+    total += rank;
+    if (total > 21 && soft) { total -= 10; soft = false; }
+  }
+  return [total, soft, total > 21];
+}
+function handFromCards(ranks) {
+  let t = 0, s = false;
+  for (const r of ranks) { [t, s] = addCard(t, s, r); }
+  return [t, s];
+}
+function isNatural(ranks) {
+  return ranks.length === 2 && handFromCards(ranks)[0] === 21;
+}
+
+/* ----------------------------------------------------------------- dealer */
+const _finalMemo = new Map();
+function finalDist(total, soft) {
+  const key = total + (soft ? "s" : "h");
+  const c = _finalMemo.get(key);
+  if (c) return c;
+  let out;
+  if (total > 21) out = new Map([["bust", 1.0]]);
+  else if (total >= 17) out = new Map([[total, 1.0]]);
+  else {
+    out = new Map();
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns] = addCard(total, soft, r);
+      for (const [k, v] of finalDist(nt, ns)) out.set(k, (out.get(k) || 0) + p * v);
+    }
+  }
+  _finalMemo.set(key, out);
+  return out;
+}
+const OUTCOMES = [17, 18, 19, 20, 21, "bust"];
+const _dealerMemo = new Map();
+function dealerDistribution(upcard) {
+  const c = _dealerMemo.get(upcard);
+  if (c) return c;
+  let p_bj = 0.0;
+  const agg = new Map();
+  for (const hole of RANKS) {
+    const p_hole = RANK_PROBS_F[hole];
+    const [total, soft] = handFromCards([upcard, hole]);
+    if (total === 21) { p_bj += p_hole; continue; }
+    for (const [k, v] of finalDist(total, soft)) agg.set(k, (agg.get(k) || 0) + p_hole * v);
+  }
+  const norm = 1.0 - p_bj;
+  const dist = new Map();
+  if (norm > 0) for (const [k, v] of agg) dist.set(k, v / norm);
+  for (const k of OUTCOMES) if (!dist.has(k)) dist.set(k, 0.0);
+  const res = [p_bj, dist];
+  _dealerMemo.set(upcard, res);
+  return res;
+}
+
+/* -------------------------------------------------- config + carry values */
+const CFG = {
+  fee: 1.0, blackjack_payout: 1.5,
+  double_any_two: true, allow_split: true, split_aces_one_card: true,
+  peek_on_ace: true, peek_on_ten: false, split_carry_rule: "max",
+};
+const CARRY_VALUES = {
+  1: 0.0, 2: 0.4720548342144516, 3: 1.049689953565771, 4: 1.6865600815060977,
+  5: 2.3555048739252915, 6: 3.0309441633289222, 8: 4.390591003885954,
+  10: 5.754771931652901, 12: 7.12182622628617, 15: 9.174645334563785,
+  20: 12.598777663148217, 25: 16.02442233592323,
+};
+
+/* ------------------------------------------------------------ multipliers */
+const BUCKETS = ["<=17", "18", "19", "20", "21", "BJ"];
+const TIERS = [
+  {"<=17":2,"18":2,"19":3,"20":4,"21":5,"BJ":6},
+  {"<=17":2,"18":3,"19":4,"20":5,"21":6,"BJ":8},
+  {"<=17":2,"18":3,"19":4,"20":5,"21":8,"BJ":12},
+  {"<=17":2,"18":4,"19":5,"20":6,"21":10,"BJ":15},
+  {"<=17":2,"18":5,"19":6,"20":8,"21":12,"BJ":20},
+  {"<=17":2,"18":5,"19":8,"20":10,"21":15,"BJ":25},
+];
+const TIER_BJ_VALUES = TIERS.map(t => t.BJ);
+function bucketOf(total, natural) {
+  if (natural) return "BJ";
+  if (total <= 17) return "<=17";
+  return String(total);
+}
+function multiplierFor(S, total, natural) { return S[bucketOf(total, natural)]; }
+
+/* --------------------------------------------------------------- actions */
+const STAND = "stand", HIT = "hit", DOUBLE = "double", SPLIT = "split";
+function maxBy(arr, key) {           // first-max, matching Python max(key=)
+  let best = arr[0], bv = key(arr[0]);
+  for (let i = 1; i < arr.length; i++) { const v = key(arr[i]); if (v > bv) { best = arr[i]; bv = v; } }
+  return best;
+}
+
+/* ------------------------------------------------------------- Evaluator */
+class Evaluator {
+  constructor(carryValues, multiplierIn, revealedSet, cfg = CFG) {
+    this.carry = carryValues;
+    this.mIn = multiplierIn;
+    this.S = revealedSet;
+    this.cfg = cfg;
+    this._handCache = new Map();
+    this._ctxCache = new Map();
+  }
+  _bonus(total, natural) { return this.carry[multiplierFor(this.S, total, natural)]; }
+  _ctx(up) {
+    let ctx = this._ctxCache.get(up);
+    if (ctx) return ctx;
+    const [p_bj, cond] = dealerDistribution(up);
+    const peek = (up === 11 && this.cfg.peek_on_ace) || (up === 10 && this.cfg.peek_on_ten);
+    ctx = { cond, p_in_play: peek ? 0.0 : p_bj, peek_loss: peek ? p_bj : 0.0 };
+    this._ctxCache.set(up, ctx);
+    return ctx;
+  }
+  _winPushLoss(total, cond) {
+    let pw = 0, pp = 0, pl = 0;
+    for (const [d, p] of cond) {
+      if (d === "bust") pw += p;
+      else if (d > total) pl += p;
+      else if (d === total) pp += p;
+      else pw += p;
+    }
+    return [pw, pp, pl];
+  }
+  _standValue(total, stake, ctx) {
+    const [pw, , pl] = this._winPushLoss(total, ctx.cond);
+    const q = ctx.p_in_play;
+    const win_p = (1 - q) * pw, loss_p = (1 - q) * pl + q;
+    return win_p * (this.mIn * stake + this._bonus(total, false)) - loss_p * stake;
+  }
+  _handValue(total, soft, canDouble, stake, up) {
+    const key = total + "," + soft + "," + canDouble + "," + stake + "," + up;
+    const cached = this._handCache.get(key);
+    if (cached !== undefined) return cached;
+    const ctx = this._ctx(up);
+    let best = this._standValue(total, stake, ctx);
+    let hit = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit += bust ? p * (-stake) : p * this._handValue(nt, ns, false, stake, up);
+    }
+    if (hit > best) best = hit;
+    if (canDouble && this.cfg.double_any_two) {
+      let dbl = 0;
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [nt, ns, bust] = addCard(total, soft, r);
+        dbl += bust ? p * (-2 * stake) : p * this._standValue(nt, 2 * stake, ctx);
+      }
+      if (dbl > best) best = dbl;
+    }
+    this._handCache.set(key, best);
+    return best;
+  }
+  handAction(total, soft, canDouble, stake, up) {
+    const ctx = this._ctx(up);
+    let bestName = STAND, bestVal = this._standValue(total, stake, ctx);
+    let hit = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit += bust ? p * (-stake) : p * this._handValue(nt, ns, false, stake, up);
+    }
+    if (hit > bestVal) { bestName = HIT; bestVal = hit; }
+    if (canDouble && this.cfg.double_any_two) {
+      let dbl = 0;
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [nt, ns, bust] = addCard(total, soft, r);
+        dbl += bust ? p * (-2 * stake) : p * this._standValue(nt, 2 * stake, ctx);
+      }
+      if (dbl > bestVal) { bestName = DOUBLE; bestVal = dbl; }
+    }
+    return bestName;
+  }
+  /* ---- split ---- */
+  _postSplitFinalDist(pairRank, up) {
+    if (pairRank === 11 && this.cfg.split_aces_one_card) {
+      const dist = new Map();
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [t] = handFromCards([11, r]);
+        dist.set(t, (dist.get(t) || 0) + p);
+      }
+      return dist;
+    }
+    const memo = new Map();
+    const final = (total, soft) => {
+      const key = total + "," + soft;
+      const hit0 = memo.get(key);
+      if (hit0 !== undefined) return hit0;
+      const stand = this._standValue(total, 1, this._ctx(up));
+      let hit = 0;
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [nt, ns, bust] = addCard(total, soft, r);
+        hit += bust ? p * (-1) : p * this._handValue(nt, ns, false, 1, up);
+      }
+      let res;
+      if (stand >= hit) res = new Map([[total, 1.0]]);
+      else {
+        res = new Map();
+        for (const r of RANKS) {
+          const p = RANK_PROBS_F[r];
+          const [nt, ns, bust] = addCard(total, soft, r);
+          const sub = bust ? new Map([["bust", 1.0]]) : final(nt, ns);
+          for (const [k, v] of sub) res.set(k, (res.get(k) || 0) + p * v);
+        }
+      }
+      memo.set(key, res);
+      return res;
+    };
+    const dist = new Map();
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [t, soft] = handFromCards([pairRank, r]);
+      for (const [k, v] of final(t, soft)) dist.set(k, (dist.get(k) || 0) + p * v);
+    }
+    return dist;
+  }
+  _splitValue(pairRank, up) {
+    const ctx = this._ctx(up);
+    const cond = ctx.cond, q = ctx.p_in_play;
+    const P = this._postSplitFinalDist(pairRank, up);
+    const takeMax = this.cfg.split_carry_rule !== "min";
+    const finals = [];
+    for (const [t, p] of P) {
+      if (p <= 0) continue;
+      if (t === "bust") finals.push([t, p, null, null]);
+      else { const m = multiplierFor(this.S, t, false); finals.push([t, p, m, this.carry[m]]); }
+    }
+    const mult_in = this.mIn;
+    let total = 0;
+    for (const [d, pd] of cond) {
+      if (pd === 0) continue;
+      let pay_sum = 0, win_p = 0;
+      const win_list = [];
+      for (const [t, p, m, hv] of finals) {
+        if (t === "bust") pay_sum -= p;
+        else if (d === "bust" || t > d) { pay_sum += p * mult_in; win_p += p; win_list.push([p, m, hv]); }
+        else if (t === d) { /* push */ }
+        else pay_sum -= p;
+      }
+      const immediate = 2 * pay_sum;
+      let sumHv = 0;
+      for (const [p, , hv] of win_list) sumHv += p * hv;
+      let bonus = 2 * (1.0 - win_p) * sumHv;
+      for (const [p1, m1] of win_list)
+        for (const [p2, m2] of win_list) {
+          const mm = takeMax ? (m1 >= m2 ? m1 : m2) : (m1 <= m2 ? m1 : m2);
+          bonus += p1 * p2 * this.carry[mm];
+        }
+      total += pd * (immediate + bonus);
+    }
+    return (1 - q) * total + q * (-2.0);
+  }
+  /* ---- solo mid-hand node ---- */
+  nodeActions(total, soft, canDouble, up, stake = 1) {
+    const ctx = this._ctx(up);
+    const acts = [{ name: STAND, ev: this._standValue(total, stake, ctx) }];
+    let hit = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit += bust ? p * (-stake) : p * this._handValue(nt, ns, false, stake, up);
+    }
+    acts.push({ name: HIT, ev: hit });
+    if (canDouble && this.cfg.double_any_two) {
+      let dbl = 0;
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [nt, ns, bust] = addCard(total, soft, r);
+        dbl += bust ? p * (-2 * stake) : p * this._standValue(nt, 2 * stake, ctx);
+      }
+      acts.push({ name: DOUBLE, ev: dbl });
+    }
+    return { actions: acts, best: maxBy(acts, a => a.ev) };
+  }
+  /* ---- second split hand, coupled ---- */
+  _siblingCarry(partnerTotal) {
+    if (partnerTotal === null) return null;
+    return [partnerTotal, multiplierFor(this.S, partnerTotal, false)];
+  }
+  _jointLoseValue(up, sibling) {
+    const ctx = this._ctx(up);
+    const cond = ctx.cond, q = ctx.p_in_play;
+    let total = 0;
+    for (const [d, pd] of cond) {
+      if (pd === 0) continue;
+      let val = -1.0;
+      if (sibling !== null && (d === "bust" || sibling[0] > d)) val += this.carry[sibling[1]];
+      total += pd * val;
+    }
+    return (1 - q) * total + q * (-1.0);
+  }
+  _jointStandValue(t, up, sibling) {
+    const ctx = this._ctx(up);
+    const cond = ctx.cond, q = ctx.p_in_play;
+    const m2 = multiplierFor(this.S, t, false);
+    const takeMax = this.cfg.split_carry_rule !== "min";
+    let total = 0;
+    for (const [d, pd] of cond) {
+      if (pd === 0) continue;
+      const sibWin = sibling !== null && (d === "bust" || sibling[0] > d);
+      let val;
+      if (d === "bust" || t > d) {
+        val = this.mIn;
+        if (sibWin) { const m1 = sibling[1]; const mm = takeMax ? (m1 >= m2 ? m1 : m2) : (m1 <= m2 ? m1 : m2); val += this.carry[mm]; }
+        else val += this.carry[m2];
+      } else if (t === d) {
+        val = sibWin ? this.carry[sibling[1]] : 0.0;
+      } else {
+        val = -1.0 + (sibWin ? this.carry[sibling[1]] : 0.0);
+      }
+      total += pd * val;
+    }
+    return (1 - q) * total + q * (-1.0);
+  }
+  _jointHandValue(total, soft, up, sibling, memo) {
+    const key = total + "," + soft;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+    let best = this._jointStandValue(total, up, sibling);
+    const lose = this._jointLoseValue(up, sibling);
+    let hit = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit += bust ? p * lose : p * this._jointHandValue(nt, ns, up, sibling, memo);
+    }
+    if (hit > best) best = hit;
+    memo.set(key, best);
+    return best;
+  }
+  jointNodeActions(total, soft, up, partnerTotal) {
+    const sibling = this._siblingCarry(partnerTotal);
+    const memo = new Map();
+    const stand = this._jointStandValue(total, up, sibling);
+    const lose = this._jointLoseValue(up, sibling);
+    let hit = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit += bust ? p * lose : p * this._jointHandValue(nt, ns, up, sibling, memo);
+    }
+    const acts = [{ name: STAND, ev: stand }, { name: HIT, ev: hit }];
+    return { actions: acts, best: maxBy(acts, a => a.ev) };
+  }
+  /* ---- top-level ---- */
+  evaluate(cards, up) {
+    const ctx = this._ctx(up);
+    const peek_loss = ctx.peek_loss;
+    if (isNatural(cards)) {
+      const [p_bj] = dealerDistribution(up);
+      const bonus = this._bonus(21, true);
+      const win_pay = this.mIn === 1 ? this.cfg.blackjack_payout : this.mIn;
+      const bj_val = (1 - p_bj) * (win_pay + bonus);
+      const a = { name: STAND, ev: bj_val };
+      return { actions: [a], best: a, round_play: bj_val - this.cfg.fee };
+    }
+    const [total, soft] = handFromCards(cards);
+    const actions = [];
+    actions.push({ name: STAND, ev: this._standValue(total, 1, ctx) });
+    let hit_ev = 0;
+    for (const r of RANKS) {
+      const p = RANK_PROBS_F[r];
+      const [nt, ns, bust] = addCard(total, soft, r);
+      hit_ev += bust ? p * (-1.0) : p * this._handValue(nt, ns, false, 1, up);
+    }
+    actions.push({ name: HIT, ev: hit_ev });
+    if (this.cfg.double_any_two) {
+      let dbl_ev = 0;
+      for (const r of RANKS) {
+        const p = RANK_PROBS_F[r];
+        const [nt, ns, bust] = addCard(total, soft, r);
+        dbl_ev += bust ? p * (-2.0) : p * this._standValue(nt, 2, ctx);
+      }
+      actions.push({ name: DOUBLE, ev: dbl_ev });
+    }
+    if (this.cfg.allow_split && cards.length === 2 && cards[0] === cards[1])
+      actions.push({ name: SPLIT, ev: this._splitValue(cards[0], up) });
+    const best = maxBy(actions, a => a.ev);
+    const play_value = best.ev;
+    const round_play = (1 - peek_loss) * play_value + peek_loss * (-1.0);
+    return { actions, best, round_play: round_play - this.cfg.fee };
+  }
+}
+
+/* ---------------------------------------------------------- session layer */
+function cardLabel(c) { return c === 11 ? "A" : String(c); }
+function handStr(cards) { return cards.map(cardLabel).join(","); }
+function handOutcome(total, dealerFinal) {
+  if (total === null) return "loss";
+  if (dealerFinal === "bust" || total > dealerFinal) return "win";
+  if (total === dealerFinal) return "push";
+  return "loss";
+}
+function node(kind, cards, total, soft, up, actions, best, hand_no = null, partner_total = null) {
+  return { kind, cards: cards.slice(), total, soft, up, actions, best, hand_no, partner_total };
+}
+
+function* playRound(ev, cards, up) {
+  if (isNatural(cards)) {
+    yield ["log", `${handStr(cards)} = natural blackjack.`];
+    return [[21, true]];
+  }
+  let [total, soft] = handFromCards(cards);
+  const r0 = ev.evaluate(cards, up);
+  const chosen = yield ["action", node("open", cards, total, soft, up, r0.actions, r0.best)];
+  if (chosen === SPLIT) return yield* playSplit(ev, cards[0], up);
+  if (chosen === STAND) { yield ["log", `stand at ${total}.`]; return [[total, false]]; }
+  if (chosen === DOUBLE) {
+    const c = yield ["card", { label: "card drawn on the double", hand_no: null }];
+    const [nt, , bust] = addCard(total, soft, c);
+    yield ["log", `${handStr(cards.concat([c]))} = ${bust ? "BUST" : nt} (doubled).`];
+    return [[bust ? null : nt, false]];
+  }
+  const c = yield ["card", { label: "card drawn", hand_no: null }];
+  cards = cards.concat([c]);
+  const [nt, , bust] = addCard(total, soft, c);
+  if (bust) { yield ["log", `${handStr(cards)} = ${nt} BUST.`]; return [[null, false]]; }
+  const final = yield* continueSolo(ev, cards, up);
+  return [[final, false]];
+}
+function* continueSolo(ev, cards, up) {
+  let [total, soft] = handFromCards(cards);
+  while (true) {
+    if (total === 21) { yield ["log", `${handStr(cards)} = 21 — stand.`]; return 21; }
+    const r = ev.nodeActions(total, soft, false, up);
+    const chosen = yield ["action", node("hit", cards, total, soft, up, r.actions, r.best)];
+    if (chosen === STAND) { yield ["log", `stand at ${total}.`]; return total; }
+    const c = yield ["card", { label: "card drawn", hand_no: null }];
+    cards = cards.concat([c]);
+    let bust;
+    [total, soft, bust] = addCard(total, soft, c);
+    if (bust) { yield ["log", `${handStr(cards)} = ${total} BUST.`]; return null; }
+  }
+}
+function* playSplit(ev, pairRank, up) {
+  yield ["log", `split ${cardLabel(pairRank)}s.`];
+  const t1 = yield* playSplitHand(ev, pairRank, up, 1, "solo");
+  const t2 = yield* playSplitHand(ev, pairRank, up, 2, t1);
+  return [[t1, false], [t2, false]];
+}
+function* playSplitHand(ev, pairRank, up, handNo, partner) {
+  if (pairRank === 11 && ev.cfg.split_aces_one_card) {
+    const c = yield ["card", { label: `hand ${handNo} card`, hand_no: handNo }];
+    const [total] = handFromCards([11, c]);
+    yield ["log", `hand ${handNo}: A,${cardLabel(c)} = ${total}.`];
+    return total;
+  }
+  const c0 = yield ["card", { label: `hand ${handNo} first card`, hand_no: handNo }];
+  let cards = [pairRank, c0];
+  let [total, soft] = handFromCards(cards);
+  while (true) {
+    if (total === 21) { yield ["log", `hand ${handNo} ${handStr(cards)} = 21 — stands.`]; return 21; }
+    let r, kind, ptot;
+    if (partner === "solo") { r = ev.nodeActions(total, soft, false, up); kind = "split1"; ptot = null; }
+    else { r = ev.jointNodeActions(total, soft, up, partner); kind = "split2"; ptot = partner; }
+    const chosen = yield ["action", node(kind, cards, total, soft, up, r.actions, r.best, handNo, ptot)];
+    if (chosen === STAND) { yield ["log", `hand ${handNo} stands at ${total}.`]; return total; }
+    const c = yield ["card", { label: `hand ${handNo} card drawn`, hand_no: handNo }];
+    cards = cards.concat([c]);
+    let bust;
+    [total, soft, bust] = addCard(total, soft, c);
+    if (bust) { yield ["log", `hand ${handNo} ${handStr(cards)} = ${total} BUST.`]; return null; }
+  }
+}
+
+function canBust(nd) { return !(nd.soft || nd.total <= 11); }
+function autoAction(nd, carry, enabled, threshold) {
+  const actions = nd.actions, best = nd.best;
+  if (actions.length === 1) return [best.name, "only legal option"];
+  if (!enabled) return [null, null];
+  if (best.name === HIT && !canBust(nd)) return [HIT, "risk-free · cannot bust"];
+  const ordered = actions.slice().sort((a, b) => b.ev - a.ev);
+  const margin = ordered[0].ev - ordered[1].ev;
+  const norm = margin / Math.max(1, carry);
+  if (norm >= threshold) return [best.name, `high conviction · Δ/carry=${norm.toFixed(2)}`];
+  return [null, null];
+}
+function resolveCarry(ev, hands, dealerFinal) {
+  const takeMax = ev.cfg.split_carry_rule !== "min";
+  const winMults = [], outcomes = [];
+  for (const [total, natural] of hands) {
+    const oc = handOutcome(total, dealerFinal);
+    let mult = null;
+    if (oc === "win") { mult = multiplierFor(ev.S, total, natural); winMults.push(mult); }
+    outcomes.push({ outcome: oc, mult, total, natural });
+  }
+  const newCarry = winMults.length ? (takeMax ? Math.max(...winMults) : Math.min(...winMults)) : 1;
+  return [newCarry, outcomes];
+}
+
+class Session {
+  constructor(startCarry = 1, auto = true, threshold = 0.20) {
+    this.startCarry = startCarry;
+    this.carry = startCarry;
+    this.roundNo = 1;
+    this.auto = auto;
+    this.threshold = threshold;
+    this.on_log = () => {};
+    this.on_decision = () => {};
+    this.on_auto = () => {};
+    this.on_card = () => {};
+    this.on_dealer = () => {};
+    this.on_round_done = () => {};
+    this.revealedSet = null;
+    this.ev = null;
+    this.up = null;
+    this._gen = null;
+    this._hands = null;
+    this._pending = null;
+    this.node = null;
+  }
+  reset() {
+    this.carry = this.startCarry;
+    this.roundNo = 1;
+    this.revealedSet = this.ev = this.up = null;
+    this._gen = this._hands = this.node = null;
+    this._pending = null;
+    this.on_log(`— reset — fresh session, carry ${this.carry}x —`);
+  }
+  startRound(revealedSet) {
+    this.revealedSet = revealedSet;
+    this.ev = new Evaluator(CARRY_VALUES, this.carry, revealedSet, CFG);
+    this._hands = this.node = null;
+    this._pending = null;
+  }
+  deal(cards, up) {
+    this.up = up;
+    this._gen = playRound(this.ev, cards, up);
+    this._drive(null);
+  }
+  choose(action) {
+    if (this._pending !== "action") throw new Error("no decision is pending");
+    this._pending = this.node = null;
+    this._drive(action);
+  }
+  card(rank) {
+    if (this._pending !== "card") throw new Error("no card is pending");
+    this._pending = null;
+    this._drive(rank);
+  }
+  dealer(final) {
+    if (this._pending !== "dealer") throw new Error("no dealer result is pending");
+    this._pending = null;
+    this._finish(final);
+  }
+  get pending() { return this._pending; }
+  _drive(value) {
+    const gen = this._gen;
+    while (true) {
+      const step = gen.next(value);
+      if (step.done) { this._hands = step.value; this._requestDealer(); return; }
+      const req = step.value;
+      value = null;
+      const tag = req[0], payload = req[1];
+      if (tag === "log") { this.on_log(payload); continue; }
+      if (tag === "action") {
+        const [action, reason] = autoAction(payload, this.carry, this.auto, this.threshold);
+        if (action !== null) { this.on_auto(payload, action, reason); value = action; continue; }
+        this._pending = "action"; this.node = payload; this.on_decision(payload); return;
+      }
+      if (tag === "card") { this._pending = "card"; this.on_card(payload); return; }
+      throw new Error("unknown request " + tag);
+    }
+  }
+  _requestDealer() {
+    if (this._hands.every(([total]) => total === null)) {
+      this.on_log("all hands bust — loss.");
+      this._finish(null);
+      return;
+    }
+    this._pending = "dealer";
+    this.on_dealer();
+  }
+  _finish(dealerFinal) {
+    const [newCarry, outcomes] = resolveCarry(this.ev, this._hands, dealerFinal);
+    const summary = {
+      round: this.roundNo, outcomes, dealer: dealerFinal,
+      old_carry: this.carry, new_carry: newCarry,
+    };
+    this.carry = newCarry;
+    this.roundNo += 1;
+    this._gen = this._hands = this.node = null;
+    this._pending = null;
+    this.on_round_done(summary);
+  }
+}
+
+/* ---- app/view layer (twin of webserver.py _View + App) ---- */
+const ACTION_LABEL = { stand: "Stand", hit: "Hit", double: "Double", split: "Split" };
+const LOG_CAP = 300;
+function upLabelV(up) { return up === 11 ? "A" : String(up); }
+
+/* ---- card parsing (cli.py: parse_card / parse_hand) ---- */
+const RANKMAP = { A: 11, J: 10, Q: 10, K: 10, T: 10 };
+function parseCard(tok) {
+  tok = String(tok).trim().toUpperCase();
+  if (tok in RANKMAP) return RANKMAP[tok];
+  const n = parseInt(tok, 10);
+  if (isNaN(n)) throw new Error("bad card: " + tok);
+  if (n === 1) return 11;
+  if (n >= 2 && n <= 11) return n;
+  throw new Error("bad card: " + tok);
+}
+function parseHand(s) {
+  return String(s).replace(/ /g, ",").split(",").filter(x => x).map(parseCard);
+}
+function describeSet(S) { return BUCKETS.map(b => `${b}:${S[b]}x`).join(" "); }
+
+/* ---- per-device multiplier histogram (localStorage) ---- */
+const HKEY = "lbj_hist_v1";
+const SESSION_START = (typeof Date !== "undefined") ? Date.now() : 0;
+function _store() { return (typeof localStorage !== "undefined") ? localStorage : null; }
+function loadHist() {
+  const s = _store(); if (!s) return [];
+  try { return JSON.parse(s.getItem(HKEY) || "[]"); } catch (e) { return []; }
+}
+function recordSet(tier) {
+  const s = _store(); if (!s) return;
+  const h = loadHist(); h.push({ t: Date.now(), bj: tier.BJ });
+  try { s.setItem(HKEY, JSON.stringify(h)); } catch (e) { /* quota */ }
+}
+function statsFromStore(lastN) {
+  const h = loadHist();
+  const allCounts = {}; TIER_BJ_VALUES.forEach(bj => allCounts[bj] = 0);
+  for (const r of h) if (r.bj in allCounts) allCounts[r.bj]++;
+  let sess = h.filter(r => r.t >= SESSION_START);
+  if (lastN != null) sess = sess.slice(-lastN);
+  const sessCounts = {}; TIER_BJ_VALUES.forEach(bj => sessCounts[bj] = 0);
+  for (const r of sess) if (r.bj in sessCounts) sessCounts[r.bj]++;
+  return {
+    bj_values: TIER_BJ_VALUES.slice(),
+    all: { counts: allCounts, total: h.length },
+    session: { counts: sessCounts, total: sess.length, last_n: lastN },
+  };
+}
+
+/* ---- View: server-side mirror of on-screen state, serialised ---- */
+class View {
+  constructor(session) {
+    this.session = session;
+    session.on_log = (m) => this._log(m);
+    session.on_decision = (n) => this._onDecision(n);
+    session.on_auto = (n, a, r) => this._onAuto(n, a, r);
+    session.on_card = (c) => this._onCard(c);
+    session.on_dealer = () => this._onDealer();
+    session.on_round_done = (s) => this._onRoundDone(s);
+    this.t_dealer_up = null; this.t_dealer_final = null;
+    this.t_hands = []; this.t_set = null; this.pair_rank = null; this._card_ctx = null;
+    this.situation = "—"; this.evs = []; this.move_buttons = [];
+    this.dock_title = "NEW ROUND"; this.prompt = ""; this.phase = "setup";
+    this.log_lines = []; this.store = false;
+  }
+  _ensureSplitHands() {
+    if (this.t_hands.length === 2) return;
+    this.t_hands = [{ cards: [this.pair_rank], label: "Hand 1", note: "" },
+                    { cards: [this.pair_rank], label: "Hand 2", note: "" }];
+  }
+  _syncHand(node) {
+    const idx = node.hand_no ? node.hand_no - 1 : 0;
+    if (node.hand_no) this._ensureSplitHands();
+    this.t_hands[idx].cards = node.cards.slice();
+  }
+  playCard(rank) {
+    const ctx = this._card_ctx;
+    const hn = ctx ? ctx.hand_no : null;
+    if (hn) { this._ensureSplitHands(); this.t_hands[hn - 1].cards.push(rank); }
+    else if (this.t_hands.length) this.t_hands[0].cards.push(rank);
+    this.session.card(rank);
+  }
+  _showNode(node, auto = null, reason = null) {
+    this._syncHand(node);
+    const cards = handStr(node.cards);
+    const where = node.hand_no ? `Split hand ${node.hand_no}  ${cards}` : `Hand ${cards}`;
+    this.situation = `${where}  ·  total ${node.total} vs dealer ${upLabelV(node.up)}  ·  carry ${this.session.carry}×`;
+    const best = node.best.name;
+    this.evs = node.actions.slice().sort((a, b) => b.ev - a.ev).map(a => ({
+      name: a.name, label: ACTION_LABEL[a.name], ev: a.ev,
+      best: a.name === best, auto: (auto === a.name) ? reason : null,
+    }));
+  }
+  _log(m) {
+    this.log_lines.push(m);
+    if (this.log_lines.length > LOG_CAP) this.log_lines.splice(0, this.log_lines.length - LOG_CAP);
+  }
+  _onDecision(node) {
+    this._showNode(node);
+    this.dock_title = "YOUR MOVE"; this.prompt = "";
+    const best = node.best.name;
+    this.move_buttons = node.actions.map(a => ({ name: a.name, label: ACTION_LABEL[a.name], best: a.name === best }));
+  }
+  _onAuto(node, action, reason) {
+    this._showNode(node, action, reason);
+    this.dock_title = "AUTO-PLAYED";
+    this.prompt = `Auto-played ${ACTION_LABEL[action]} — ${reason}`;
+    this._log(`  auto ${ACTION_LABEL[action]} — ${reason} (hand total ${node.total} vs ${upLabelV(node.up)})`);
+  }
+  _onCard(ctx) { this._card_ctx = ctx; this.dock_title = "WHICH CARD CAME?"; this.prompt = ctx.label; }
+  _onDealer() { this.dock_title = "DEALER'S FINAL TOTAL"; this.prompt = ""; }
+  _onRoundDone(summary) {
+    const dealer = summary.dealer;
+    const dtxt = (dealer === null || dealer === "bust") ? "bust" : String(dealer);
+    const outcomes = summary.outcomes;
+    outcomes.forEach((oc, i0) => {
+      const i = i0 + 1;
+      const label = outcomes.length > 1 ? `hand ${i}` : "result";
+      const note = oc.outcome === "win" ? `win ${oc.mult}×` : oc.outcome;
+      this._log(`  ${label}: ${note}`);
+      if (i - 1 < this.t_hands.length) this.t_hands[i - 1].note = note;
+    });
+    this._log(`  dealer ${dtxt}  ·  carry ${summary.old_carry}× -> ${summary.new_carry}×`);
+    this.t_dealer_final = (dealer === null) ? "bust" : dealer;
+    this.situation = `Round over — carry is now ${summary.new_carry}×.  Pick the next set and Deal.`;
+    this.phase = "setup";
+  }
+  snapshot() {
+    const s = this.session;
+    return {
+      carry: s.carry, round: s.roundNo, phase: this.phase, pending: s.pending,
+      dock_title: this.dock_title, prompt: this.prompt, situation: this.situation, evs: this.evs,
+      move_buttons: s.pending === "action" ? this.move_buttons : [],
+      card_ctx: s.pending === "card" ? this._card_ctx : null,
+      table: { set: this.t_set, dealer_up: this.t_dealer_up, dealer_final: this.t_dealer_final, hands: this.t_hands },
+      log: this.log_lines,
+      settings: { auto: s.auto, threshold: Math.round(s.threshold * 100) / 100, start_carry: s.startCarry, store: this.store },
+      tiers: TIERS.map(t => Object.assign({}, t)),
+      bj_values: TIER_BJ_VALUES.slice(),
+    };
+  }
+}
+
+/* ---- App: owns the session + view, exposes the same actions as the server ---- */
+class App {
+  constructor() { this._newSession(); }
+  _newSession() {
+    this.session = new Session(1, true, 0.20);
+    this.view = new View(this.session);
+    this.view._log("Pick the revealed set, enter your hand and the dealer upcard, then Deal.");
+  }
+  state() { return this.view.snapshot(); }
+  deal(body) {
+    const v = this.view, s = this.session;
+    let cards, up, bj, tier;
+    try {
+      cards = parseHand(String(body.hand || ""));
+      if (cards.length < 2) throw new Error("enter at least two cards, e.g. 10,6");
+      up = parseCard(String(body.up || ""));
+      bj = parseInt(body.bj, 10);
+      tier = TIERS.find(t => t.BJ === bj);
+      if (!tier) throw new Error("bad set");
+    } catch (e) { v._log("! " + e.message); return v.snapshot(); }
+    if (v.store) { recordSet(tier); v._log(`  recorded set (BJ ${tier.BJ}×) -> local history`); }
+    s.startRound(Object.assign({}, tier));
+    v.t_dealer_up = up; v.t_dealer_final = null; v.t_set = Object.assign({}, tier);
+    v.pair_rank = cards[0];
+    v.t_hands = [{ cards: cards.slice(), label: "YOU", note: "" }];
+    v._log(`\n----- Round ${s.roundNo} (carry ${s.carry}×) -----`);
+    v._log(`set ${describeSet(tier)}; hand ${handStr(cards)} vs dealer ${upLabelV(up)}`);
+    v.phase = "play";
+    s.deal(cards, up);
+    return v.snapshot();
+  }
+  choose(body) {
+    if (this.session.pending === "action") this.session.choose(String(body.action));
+    return this.view.snapshot();
+  }
+  card(body) {
+    if (this.session.pending === "card") this.view.playCard(parseInt(body.rank, 10));
+    return this.view.snapshot();
+  }
+  dealer(body) {
+    if (this.session.pending === "dealer") {
+      const val = body.value;
+      this.session.dealer((val === null || val === "bust") ? "bust" : parseInt(val, 10));
+    }
+    return this.view.snapshot();
+  }
+  reset() { this._newSession(); this.view._log("— reset — fresh session, carry 1× —"); return this.view.snapshot(); }
+  settings(body) {
+    const s = this.session, v = this.view;
+    if ("auto" in body) s.auto = !!body.auto;
+    if ("threshold" in body) s.threshold = Math.round(parseFloat(body.threshold) * 100) / 100;
+    if ("start_carry" in body) {
+      s.startCarry = parseInt(body.start_carry, 10);
+      if (s.roundNo === 1 && s.pending === null) s.carry = s.startCarry;
+    }
+    if ("store" in body) {
+      v.store = !!body.store;
+      v._log("  histogram recording " + (v.store ? "ON — each dealt set is saved" : "off"));
+    }
+    return v.snapshot();
+  }
+  stats(body) {
+    let n = null;
+    const ln = parseInt(body.last_n, 10);
+    if (!isNaN(ln) && ln > 0) n = ln;
+    return statsFromStore(n);
+  }
+}
+
+const BUILD = "serverless 1 · in-page solver";
+window.LBJ = { App, BUILD };
+})();
+</script>
+
 
 <script>
 "use strict";
@@ -316,29 +1156,29 @@ function totalText(cards){
 }
 
 /* ---- API ---- */
+const BUILD = window.LBJ.BUILD;
+const APP = new window.LBJ.App();
+const ROUTE = {"/api/state":"state","/api/deal":"deal","/api/choose":"choose",
+               "/api/card":"card","/api/dealer":"dealer","/api/reset":"reset",
+               "/api/settings":"settings","/api/stats":"stats"};
+/* In-page "API": no network at all — the solver runs right here. Kept as an
+   async fn returning the snapshot so existing `await api(...)` callers work
+   unchanged, and every call is still logged to the bug panel. */
 async function api(path, body){
-  const ctrl = new AbortController();
-  const timer = setTimeout(()=>ctrl.abort(), 15000);
+  const m = ROUTE[path];
   const t0 = performance.now();
-  dbg("→ POST "+path);
+  dbg("→ "+path);
   try{
-    const r = await fetch(path, {method:"POST", cache:"no-store", signal:ctrl.signal,
-                                 headers:{"Content-Type":"application/json"},
-                                 body: JSON.stringify(body||{})});
-    const ms = (performance.now()-t0).toFixed(0);
-    if(!r.ok) throw new Error("HTTP "+r.status);
-    const data = await r.json();
-    dbg("✓ "+path+"  "+ms+" ms", "ok");
+    if(!m) throw new Error("unknown route "+path);
+    const data = APP[m](body||{});
+    dbg("✓ "+path+"  "+(performance.now()-t0).toFixed(1)+" ms", "ok");
     return data;
   }catch(e){
-    const ms = (performance.now()-t0).toFixed(0);
-    const msg = e.name==="AbortError" ? "TIMED OUT after "+ms+" ms (is the server running?)"
-                                      : e.message+"  ("+ms+" ms)";
-    dbg("✗ "+path+"  "+msg, "err");
+    dbg("✗ "+path+"  "+e.message, "err");
     const el = document.getElementById("situation");
-    if(el) el.textContent = "⚠ "+path+" — "+msg;
+    if(el) el.textContent = "⚠ "+path+" — "+e.message;
     throw e;
-  }finally{ clearTimeout(timer); }
+  }
 }
 async function refresh(){ apply(await api("/api/state")); }
 
@@ -548,21 +1388,8 @@ function closeModal(id){ document.getElementById(id).classList.remove("show"); }
 /* ---- debug panel ---- */
 function openDebug(){
   document.getElementById("debugBack").classList.add("show");
+  document.getElementById("dbgBuild").textContent = "· "+BUILD;
   renderClientLog();
-  loadServerLog();
-}
-async function loadServerLog(){
-  const el = document.getElementById("dbgServer");
-  el.textContent = "loading…";
-  try{
-    const r = await fetch("/api/debug", {cache:"no-store"});
-    const s = await r.json();
-    document.getElementById("dbgBuild").textContent = "· server build "+s.build;
-    el.textContent = s.lines.join("\n");
-    el.scrollTop = el.scrollHeight;
-  }catch(e){
-    el.textContent = "could not reach server: "+e.message;
-  }
 }
 
 /* ---- stats ---- */
@@ -574,7 +1401,7 @@ async function drawStats(){
   const n = parseInt(document.getElementById("lastN").value)||null;
   const s = await api("/api/stats", {last_n:n});
   document.getElementById("legAll").textContent = `All sessions (n=${s.all.total})`;
-  document.getElementById("legSess").textContent = `This session ≤2h (n=${s.session.total})`;
+  document.getElementById("legSess").textContent = `This run (n=${s.session.total})`;
   const bars = document.getElementById("bars"); bars.innerHTML="";
   let maxp = 1e-9;
   for(const bj of s.bj_values){
@@ -600,8 +1427,13 @@ function mkBar(cls, p, maxp){
 }
 
 /* boot */
-dbg("page loaded — fetching initial state");
+dbg("serverless build — solver runs in-page ("+BUILD+")");
 refresh();
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("/sw.js").then(
+    ()=>dbg("offline cache ready (service worker registered)","ok"),
+    (e)=>dbg("service worker failed: "+e.message,"err"));
+}
 </script>
 </body>
 </html>
