@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lightning BJ">
+<meta name="theme-color" content="#101b16">
+<title>Lightning Blackjack</title>
+<style>
+  :root{
+    --bg:#101b16; --bar:#182821; --panel:#0d1813; --line:#25382e;
+    --ink:#e9f1eb; --muted:#93a99b; --gold:#d9a52c; --gold-ink:#2a1f04;
+    --key:#2a3b33; --key-ink:#e7efe9; --good:#5cc088; --bad:#e58067;
+    --danger:#c0563f; --felt:#2c6b4a; --felt2:#215139;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%;}
+  body{
+    background:var(--bg); color:var(--ink); overflow:hidden;
+    font-family:-apple-system,"SF Pro Text","Helvetica Neue",Roboto,system-ui,sans-serif;
+    display:flex; flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  button{font-family:inherit; border:0; cursor:pointer; color:inherit;}
+
+  /* ---- header ---- */
+  header{
+    background:var(--bar); display:flex; align-items:center; gap:12px;
+    padding:10px 14px; flex:0 0 auto;
+  }
+  .carry{font-size:24px; font-weight:800; color:var(--gold); line-height:1;}
+  .round{font-size:13px; color:var(--muted);}
+  header .spacer{flex:1;}
+  .hbtn{
+    background:var(--key); color:var(--key-ink); border-radius:11px;
+    padding:9px 11px; font-size:14px; font-weight:700; min-width:40px;
+  }
+  .hbtn.reset{color:var(--danger);}
+  .hbtn.on{background:var(--gold); color:var(--gold-ink);}
+
+  /* ---- felt table ---- */
+  .felt{
+    background:linear-gradient(160deg,var(--felt),var(--felt2));
+    flex:0 0 auto; padding:10px 14px 14px; position:relative; min-height:150px;
+  }
+  .felt .setind{position:absolute; top:8px; right:12px; text-align:right;}
+  .felt .setind .bj{color:#cfe4d6; font-weight:700; font-size:12px;}
+  .felt .setind .body{color:#9cc0aa; font-size:11px;}
+  .rowlabel{color:#a9c7b5; font-weight:700; font-size:11px; letter-spacing:.4px;
+    margin:2px 0 4px;}
+  .cards{display:flex; align-items:center; gap:0; min-height:66px;}
+  .hands{display:flex; gap:22px; flex-wrap:wrap;}
+  .hand .total{color:#f6f2c8; font-weight:800; font-size:15px; margin-left:10px;}
+  .hand .note{font-weight:700; font-size:12px; margin-top:3px;}
+  .hand .note.win{color:#bff0bf;} .hand .note.other{color:#f0c0c0;}
+  .card{
+    width:44px; height:62px; border-radius:7px; background:#fbfbf7;
+    border:1px solid #d8ddce; margin-left:-14px; position:relative;
+    box-shadow:1px 2px 3px rgba(0,0,0,.35); flex:0 0 auto;
+  }
+  .card:first-child{margin-left:0;}
+  .card .r{position:absolute; top:3px; left:5px; font-size:12px; font-weight:800;}
+  .card .s{position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; font-size:22px; padding-top:6px;}
+  .card.black .r,.card.black .s{color:#16110a;}
+  .card.red .r,.card.red .s{color:#c0392b;}
+  .card.back{background:#2c4a86; border-color:#16294d;}
+  .card.back::after{content:""; position:absolute; inset:6px; border-radius:4px;
+    border:1px solid #7f97c8;}
+  .dfinal{color:#f6f2c8; font-weight:800; font-size:15px; margin-left:12px;}
+  .row{display:flex; align-items:center;}
+
+  /* ---- EV read-out ---- */
+  .readout{background:var(--panel); padding:9px 14px; flex:0 0 auto;}
+  .situation{font-size:13px; font-weight:700;}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:7px;}
+  .chip{border-radius:7px; padding:5px 9px; font-size:12px; font-weight:700;
+    background:var(--key);}
+  .chip.pos{color:var(--good);} .chip.neg{color:var(--bad);}
+  .chip.best{background:var(--gold); color:var(--gold-ink);}
+
+  /* ---- dock ---- */
+  .dock{background:var(--bar); padding:12px 14px; flex:0 0 auto;}
+  .docktitle{color:var(--muted); font-weight:700; font-size:11px;
+    letter-spacing:.5px; margin-bottom:9px;}
+  .prompt{color:var(--muted); font-size:13px; margin-bottom:8px;}
+  .setuprow{display:flex; align-items:center; gap:6px; margin:5px 0; flex-wrap:wrap;}
+  .setuprow .lab{color:var(--muted); font-weight:700; font-size:11px; width:56px;
+    flex:0 0 auto;}
+  .setbody{color:var(--muted); font-size:12px;}
+  .tog{
+    background:var(--bar); color:var(--key-ink); border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700;
+    min-width:40px;
+  }
+  .tog.sel{background:var(--gold); color:var(--gold-ink); border-color:var(--gold);}
+  input.hand{
+    background:var(--panel); color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:8px 10px; font-size:15px; width:96px; flex:0 0 auto;
+  }
+  input.hand:focus{outline:none; border-color:var(--gold);}
+  .keyrow{display:flex; gap:6px; flex-wrap:wrap;}
+  .key{
+    background:var(--key); color:var(--key-ink); border-radius:10px;
+    padding:8px 0; font-size:14px; font-weight:700; flex:1 1 auto; min-width:38px;
+  }
+  .btn-clear{background:var(--key); color:var(--key-ink); border-radius:10px;
+    padding:8px 12px; font-weight:700;}
+  .deal{
+    width:100%; margin-top:11px; background:var(--gold); color:var(--gold-ink);
+    border-radius:14px; padding:15px; font-size:17px; font-weight:800;
+  }
+  .actions{display:flex; gap:8px;}
+  .act{
+    flex:1 1 0; background:var(--key); color:var(--key-ink); border-radius:13px;
+    padding:15px 6px; font-size:15px; font-weight:800;
+  }
+  .act.best{background:var(--gold); color:var(--gold-ink);}
+  .cardkeys{display:grid; grid-template-columns:repeat(6,1fr); gap:6px;}
+  .cardkeys .key{padding:13px 0;}
+  .dealerkeys{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .dealerkeys .key{padding:14px 0;}
+  .dealerkeys .key.bust{background:var(--danger); color:#fff;}
+
+  /* ---- history ---- */
+  .history{flex:1 1 auto; overflow:hidden; padding:9px 14px 4px;
+    display:flex; flex-direction:column; min-height:56px;}
+  .history .lab{color:var(--muted); font-weight:700; font-size:11px;
+    letter-spacing:.5px; margin-bottom:4px;}
+  .log{
+    background:var(--panel); border-radius:8px; padding:8px 10px; overflow-y:auto;
+    flex:1 1 auto; font-size:12.5px; white-space:pre-wrap; line-height:1.45;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  /* ---- modal ---- */
+  .backdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+    align-items:center; justify-content:center; z-index:20; padding:18px;}
+  .backdrop.show{display:flex;}
+  .modal{background:var(--bg); border:1px solid var(--line); border-radius:16px;
+    padding:18px; width:100%; max-width:420px; max-height:86%; overflow-y:auto;}
+  .modal h2{margin:0 0 14px; font-size:16px;}
+  .field{display:flex; align-items:center; justify-content:space-between;
+    gap:12px; margin:12px 0;}
+  .field label{font-size:14px;}
+  input[type=range]{accent-color:var(--gold); flex:1;}
+  input[type=number]{background:var(--panel); color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; padding:6px 8px; width:74px;
+    font-size:14px;}
+  .switch{width:52px; height:30px; border-radius:15px; background:var(--key);
+    position:relative; flex:0 0 auto;}
+  .switch.on{background:var(--gold);}
+  .switch::after{content:""; position:absolute; top:3px; left:3px; width:24px;
+    height:24px; border-radius:50%; background:#fff; transition:left .15s;}
+  .switch.on::after{left:25px;}
+  .modal .close{width:100%; margin-top:16px; background:var(--key);
+    color:var(--key-ink); border-radius:11px; padding:12px; font-weight:700;}
+  .bars{display:flex; gap:10px; align-items:flex-end; height:200px;
+    padding:10px 0; border-bottom:1px solid var(--line);}
+  .barcol{flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:flex-end; height:100%;}
+  .barpair{display:flex; gap:3px; align-items:flex-end; flex:1; width:100%;
+    justify-content:center;}
+  .bar{width:38%; border-radius:4px 4px 0 0;}
+  .bar.all{background:#4f8fe0;} .bar.sess{background:#e07a63;}
+  .barlab{color:var(--muted); font-size:11px; margin-top:5px;}
+  .legend{display:flex; gap:16px; font-size:12px; margin-top:10px; color:var(--muted);}
+  .legend .dot{display:inline-block; width:11px; height:11px; border-radius:3px;
+    margin-right:5px; vertical-align:-1px;}
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="carry" id="carry">Carry 1×</div>
+      <div class="round" id="round">Round 1</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="hbtn" id="storeBtn" onclick="toggleStore()">Store: off</button>
+    <button class="hbtn" onclick="openStats()">📊</button>
+    <button class="hbtn" onclick="openSettings()">⚙</button>
+    <button class="hbtn reset" onclick="doReset()">Reset</button>
+  </header>
+
+  <div class="felt" id="felt"></div>
+
+  <div class="readout">
+    <div class="situation" id="situation">—</div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="dock">
+    <div class="docktitle" id="dockTitle">NEW ROUND</div>
+    <div id="dockBody"></div>
+  </div>
+
+  <div class="history">
+    <div class="lab">HISTORY</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <!-- settings modal -->
+  <div class="backdrop" id="settingsBack">
+    <div class="modal">
+      <h2>Settings</h2>
+      <div class="field">
+        <label>Auto-play trivial / high-conviction</label>
+        <div class="switch" id="autoSw" onclick="toggleAuto()"></div>
+      </div>
+      <div class="field">
+        <label>Conviction threshold</label>
+        <input type="range" min="0" max="1" step="0.01" id="thr" oninput="onThr()">
+        <span id="thrVal" style="color:var(--gold); font-weight:700; width:38px;">0.20</span>
+      </div>
+      <div class="field">
+        <label>Starting carry</label>
+        <input type="number" min="1" max="25" id="startCarry" onchange="onStartCarry()">
+      </div>
+      <button class="close" onclick="closeModal('settingsBack')">Close</button>
+    </div>
+  </div>
+
+  <!-- stats modal -->
+  <div class="backdrop" id="statsBack">
+    <div class="modal">
+      <h2>Multiplier histogram</h2>
+      <div class="field">
+        <label>This session: last</label>
+        <input type="number" min="1" max="100000" id="lastN" value="100"
+               onchange="drawStats()">
+        <span style="color:var(--muted); font-size:12px;">games (≤2h)</span>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="legend">
+        <span><span class="dot" style="background:#4f8fe0"></span><span id="legAll">All sessions</span></span>
+        <span><span class="dot" style="background:#e07a63"></span><span id="legSess">This session</span></span>
+      </div>
+      <button class="close" onclick="closeModal('statsBack')">Close</button>
+    </div>
+  </div>
+
+<script>
+"use strict";
+const SUITS = [["♠","black"],["♣","black"],["♥","red"],["♦","red"]];
+const CARD_KEYS = [["A",11],["2",2],["3",3],["4",4],["5",5],["6",6],["7",7],
+                   ["8",8],["9",9],["10",10]];
+const DEALER_KEYS = [["17",17],["18",18],["19",19],["20",20],["21",21],["Bust","bust"]];
+let SNAP = null;
+let selBj = null, selUp = "10", handStr = "";
+
+/* ---- card / hand helpers (mirror of cards.py, for display totals) ---- */
+function addCard(total, soft, r){
+  if(r===11){ let was=soft; total+=11; if(total>21){total-=10; soft=was;} else soft=true; }
+  else { total+=r; if(total>21 && soft){ total-=10; soft=false; } }
+  return [total, soft, total>21];
+}
+function handValue(ranks){
+  let t=0, s=false;
+  for(const r of ranks){ [t,s]=addCard(t,s,r); }
+  return [t,s];
+}
+function rankText(r){ return r===11 ? "A" : String(r); }
+function upLabel(u){ return u===11 ? "A" : String(u); }
+function totalText(cards){
+  if(!cards.length) return "";
+  const [t,s]=handValue(cards);
+  if(t>21) return t+" · BUST";
+  return s ? "soft "+t : String(t);
+}
+
+/* ---- API ---- */
+async function api(path, body){
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+                               body: JSON.stringify(body||{})});
+  return r.json();
+}
+async function refresh(){ apply(await api("/api/state")); }
+
+/* ---- rendering ---- */
+function cardEl(rank, idx, back){
+  const d = document.createElement("div");
+  if(back){ d.className="card back"; return d; }
+  const [glyph,color]=SUITS[idx % 4];
+  d.className="card "+color;
+  d.innerHTML = `<div class="r">${rankText(rank)}</div><div class="s">${glyph}</div>`;
+  return d;
+}
+function renderFelt(t){
+  const felt = document.getElementById("felt");
+  felt.innerHTML = "";
+  if(t.set){
+    const body = ["18","19","20","21"].map(b=>t.set[b]).join("/");
+    const ind = document.createElement("div");
+    ind.className="setind";
+    ind.innerHTML = `<div class="bj">SET  BJ ${t.set.BJ}×</div><div class="body">18-21: ${body}</div>`;
+    felt.appendChild(ind);
+  }
+  // dealer
+  const dl = document.createElement("div"); dl.className="rowlabel"; dl.textContent="DEALER";
+  felt.appendChild(dl);
+  const drow = document.createElement("div"); drow.className="row";
+  const dcards = document.createElement("div"); dcards.className="cards";
+  if(t.dealer_up != null){
+    dcards.appendChild(cardEl(t.dealer_up, 0, false));
+    dcards.appendChild(cardEl(null, 0, true));
+  }
+  drow.appendChild(dcards);
+  if(t.dealer_final != null){
+    const f = document.createElement("div"); f.className="dfinal";
+    f.textContent = t.dealer_final==="bust" ? "BUST" : "= "+t.dealer_final;
+    drow.appendChild(f);
+  }
+  felt.appendChild(drow);
+  // player
+  const pl = document.createElement("div"); pl.className="rowlabel";
+  pl.style.marginTop="12px"; pl.textContent="YOU"; felt.appendChild(pl);
+  const hands = document.createElement("div"); hands.className="hands";
+  for(const h of t.hands){
+    const hd = document.createElement("div"); hd.className="hand";
+    const top = document.createElement("div"); top.className="row";
+    const cc = document.createElement("div"); cc.className="cards";
+    h.cards.forEach((r,i)=>cc.appendChild(cardEl(r, i+1, false)));
+    top.appendChild(cc);
+    const tot = document.createElement("div"); tot.className="total";
+    tot.textContent = totalText(h.cards); top.appendChild(tot);
+    hd.appendChild(top);
+    if(h.note){
+      const n = document.createElement("div");
+      n.className = "note " + (h.note.includes("win") ? "win":"other");
+      n.textContent = h.note; hd.appendChild(n);
+    }
+    hands.appendChild(hd);
+  }
+  felt.appendChild(hands);
+}
+function renderChips(evs){
+  const c = document.getElementById("chips"); c.innerHTML="";
+  for(const e of evs){
+    const d = document.createElement("div");
+    d.className = "chip " + (e.best ? "best" : (e.ev>=0 ? "pos":"neg"));
+    let txt = `${e.label}  ${e.ev>=0?"+":""}${e.ev.toFixed(3)}`;
+    if(e.best) txt += e.auto ? "  ◀ auto" : "  ◀";
+    d.textContent = txt;
+    c.appendChild(d);
+  }
+}
+function setBody(bj){
+  const tier = SNAP.tiers.find(t=>t.BJ===bj);
+  return tier ? ["18","19","20","21"].map(b=>tier[b]).join("/") : "";
+}
+function renderSetup(){
+  if(selBj===null) selBj = SNAP.bj_values[0];
+  const box = document.getElementById("dockBody");
+  box.innerHTML = "";
+  // SET row
+  const r1 = document.createElement("div"); r1.className="setuprow";
+  r1.innerHTML = `<span class="lab">SET</span>`;
+  SNAP.bj_values.forEach(bj=>{
+    const b = document.createElement("button");
+    b.className = "tog" + (bj===selBj ? " sel":""); b.textContent = "BJ "+bj+"×";
+    b.onclick = ()=>{ selBj=bj; renderSetup(); };
+    r1.appendChild(b);
+  });
+  const sb = document.createElement("span"); sb.className="setbody";
+  sb.textContent = "18-21: "+setBody(selBj); r1.appendChild(sb);
+  box.appendChild(r1);
+  // HAND row
+  const r2 = document.createElement("div"); r2.className="setuprow";
+  r2.innerHTML = `<span class="lab">HAND</span>`;
+  const inp = document.createElement("input"); inp.className="hand"; inp.value=handStr;
+  inp.placeholder="10,6"; inp.oninput=e=>{ handStr=e.target.value; };
+  r2.appendChild(inp);
+  box.appendChild(r2);
+  const kr = document.createElement("div"); kr.className="keyrow";
+  kr.style.marginBottom="6px";
+  CARD_KEYS.forEach(([lab])=>{
+    const b=document.createElement("button"); b.className="key"; b.textContent=lab;
+    b.onclick=()=>{ handStr = handStr ? handStr+","+lab : lab;
+                    document.querySelector("input.hand").value = handStr; };
+    kr.appendChild(b);
+  });
+  const clr=document.createElement("button"); clr.className="btn-clear"; clr.textContent="Clear";
+  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; };
+  kr.appendChild(clr);
+  box.appendChild(kr);
+  // UPCARD row
+  const r3 = document.createElement("div"); r3.className="setuprow";
+  r3.innerHTML = `<span class="lab">UPCARD</span>`;
+  CARD_KEYS.forEach(([lab])=>{
+    const b=document.createElement("button");
+    b.className="tog"+(lab===selUp?" sel":""); b.textContent=lab;
+    b.onclick=()=>{ selUp=lab; renderSetup(); };
+    r3.appendChild(b);
+  });
+  box.appendChild(r3);
+  // DEAL
+  const deal=document.createElement("button"); deal.className="deal"; deal.textContent="DEAL";
+  deal.onclick=doDeal; box.appendChild(deal);
+}
+function renderPlay(snap){
+  const box = document.getElementById("dockBody"); box.innerHTML="";
+  if(snap.prompt){
+    const p=document.createElement("div"); p.className="prompt"; p.textContent=snap.prompt;
+    box.appendChild(p);
+  }
+  if(snap.pending==="action"){
+    const a=document.createElement("div"); a.className="actions";
+    snap.move_buttons.forEach(m=>{
+      const b=document.createElement("button");
+      b.className="act"+(m.best?" best":""); b.textContent=m.label;
+      b.onclick=()=>send("/api/choose",{action:m.name});
+      a.appendChild(b);
+    });
+    box.appendChild(a);
+  } else if(snap.pending==="card"){
+    const g=document.createElement("div"); g.className="cardkeys";
+    CARD_KEYS.forEach(([lab,rank])=>{
+      const b=document.createElement("button"); b.className="key"; b.textContent=lab;
+      b.onclick=()=>send("/api/card",{rank});
+      g.appendChild(b);
+    });
+    box.appendChild(g);
+  } else if(snap.pending==="dealer"){
+    const g=document.createElement("div"); g.className="dealerkeys";
+    DEALER_KEYS.forEach(([lab,val])=>{
+      const b=document.createElement("button");
+      b.className="key"+(val==="bust"?" bust":""); b.textContent=lab;
+      b.onclick=()=>send("/api/dealer",{value:val});
+      g.appendChild(b);
+    });
+    box.appendChild(g);
+  }
+}
+function apply(snap){
+  SNAP = snap;
+  document.getElementById("carry").textContent = "Carry "+snap.carry+"×";
+  document.getElementById("round").textContent = "Round "+snap.round;
+  document.getElementById("situation").textContent = snap.situation;
+  document.getElementById("dockTitle").textContent = snap.dock_title;
+  renderChips(snap.evs);
+  renderFelt(snap.table);
+  if(snap.phase==="setup"){ document.getElementById("dockTitle").textContent="NEW ROUND"; renderSetup(); }
+  else renderPlay(snap);
+  const log = document.getElementById("log");
+  log.textContent = snap.log.join("\n");
+  log.scrollTop = log.scrollHeight;
+  // settings widgets
+  const st = snap.settings;
+  document.getElementById("storeBtn").textContent = st.store ? "Store: ON" : "Store: off";
+  document.getElementById("storeBtn").classList.toggle("on", st.store);
+  document.getElementById("autoSw").classList.toggle("on", st.auto);
+  document.getElementById("thr").value = st.threshold;
+  document.getElementById("thrVal").textContent = st.threshold.toFixed(2);
+  document.getElementById("startCarry").value = st.start_carry;
+}
+async function send(path, body){ apply(await api(path, body)); }
+
+/* ---- actions ---- */
+async function doDeal(){
+  handStr = document.querySelector("input.hand").value.trim();
+  apply(await api("/api/deal", {hand:handStr, up:selUp, bj:selBj}));
+}
+async function doReset(){
+  selBj=null; selUp="10"; handStr="";
+  apply(await api("/api/reset"));
+}
+async function toggleStore(){ apply(await api("/api/settings", {store: !SNAP.settings.store})); }
+async function toggleAuto(){ apply(await api("/api/settings", {auto: !SNAP.settings.auto})); }
+let thrTimer=null;
+function onThr(){
+  const v = parseFloat(document.getElementById("thr").value);
+  document.getElementById("thrVal").textContent = v.toFixed(2);
+  clearTimeout(thrTimer);
+  thrTimer = setTimeout(()=>api("/api/settings",{threshold:v}).then(apply), 150);
+}
+async function onStartCarry(){
+  apply(await api("/api/settings", {start_carry: parseInt(document.getElementById("startCarry").value)||1}));
+}
+function openSettings(){ document.getElementById("settingsBack").classList.add("show"); }
+function closeModal(id){ document.getElementById(id).classList.remove("show"); }
+
+/* ---- stats ---- */
+async function openStats(){
+  document.getElementById("statsBack").classList.add("show");
+  drawStats();
+}
+async function drawStats(){
+  const n = parseInt(document.getElementById("lastN").value)||null;
+  const s = await api("/api/stats", {last_n:n});
+  document.getElementById("legAll").textContent = `All sessions (n=${s.all.total})`;
+  document.getElementById("legSess").textContent = `This session ≤2h (n=${s.session.total})`;
+  const bars = document.getElementById("bars"); bars.innerHTML="";
+  let maxp = 1e-9;
+  for(const bj of s.bj_values){
+    maxp = Math.max(maxp, prop(s.all,bj), prop(s.session,bj));
+  }
+  for(const bj of s.bj_values){
+    const col = document.createElement("div"); col.className="barcol";
+    const pair = document.createElement("div"); pair.className="barpair";
+    pair.appendChild(mkBar("all", prop(s.all,bj), maxp));
+    pair.appendChild(mkBar("sess", prop(s.session,bj), maxp));
+    col.appendChild(pair);
+    const lab=document.createElement("div"); lab.className="barlab"; lab.textContent="BJ "+bj+"×";
+    col.appendChild(lab);
+    bars.appendChild(col);
+  }
+}
+function prop(g, bj){ return g.total ? (g.counts[bj]||0)/g.total : 0; }
+function mkBar(cls, p, maxp){
+  const b=document.createElement("div"); b.className="bar "+cls;
+  b.style.height = Math.max(0, 100*p/maxp) + "%";
+  b.title = (100*p).toFixed(0)+"%";
+  return b;
+}
+
+/* boot */
+refresh();
+</script>
+</body>
+</html>
