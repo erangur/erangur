@@ -29,8 +29,9 @@ Then open the printed URL in Safari and *Add to Home Screen*.
 import argparse
 import json
 import os
+import sys
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .cli import parse_card, parse_hand
 from .config import GameConfig
@@ -364,9 +365,26 @@ def _make_handler(app):
     return Handler
 
 
+class _Server(HTTPServer):
+    """Single-threaded server.
+
+    ``ThreadingHTTPServer`` fails on the iOS Python hosts (a-Shell/Pythonista):
+    their sandboxed sockets don't survive the file-descriptor hand-off to a
+    worker thread, so every worker dies with ``OSError: [Errno 9] Bad file
+    descriptor`` and its request never completes. Handling requests in the
+    accepting thread avoids the hand-off entirely; with ``Connection: close``
+    each request is short, so serial handling is fine for one player.
+    """
+
+    def handle_error(self, request, client_address):
+        # A client hanging up (or a speculative connection being reset) is
+        # normal on a phone; don't spew a traceback for it.
+        sys.stderr.write(f"(dropped connection from {client_address[0]})\n")
+
+
 def run(config=None, host="127.0.0.1", port=8000):
     app = App(config)
-    server = ThreadingHTTPServer((host, port), _make_handler(app))
+    server = _Server((host, port), _make_handler(app))
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
     print(f"Lightning Blackjack web app serving at http://{shown}:{port}")
     print("Open that in Safari, then Share → Add to Home Screen.")
