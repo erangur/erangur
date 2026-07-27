@@ -117,6 +117,8 @@
   }
   .btn-clear{background:var(--key); color:var(--key-ink); border-radius:10px;
     padding:8px 12px; font-weight:700;}
+  .undo{width:100%; background:var(--key); color:var(--muted); border-radius:10px;
+    padding:9px; font-size:13px; font-weight:700; margin-bottom:10px;}
   .deal{
     width:100%; margin-top:11px; background:var(--gold); color:var(--gold-ink);
     border-radius:14px; padding:15px; font-size:17px; font-weight:800;
@@ -1068,8 +1070,14 @@ class App {
     this.session = new Session(1, true, 0.20);
     this.view = new View(this.session);
     this.view._log("Pick the revealed set, enter your hand and the dealer upcard, then Deal.");
+    this._replaying = false;   // true while rebuilding a round for undo
+    this.roundCtx = null;      // how to restart the current round
+    this.inputs = [];          // committed steps this round: [{type:'deal'|'choose'|'card'|'dealer', body}]
   }
-  state() { return this.view.snapshot(); }
+  // A snapshot for the UI, tagged with whether an undo is possible.
+  _snap() { const snap = this.view.snapshot(); snap.undo = this.canUndo(); return snap; }
+  canUndo() { return !!(this.roundCtx && this.inputs && this.inputs.length > 1); }
+  state() { return this._snap(); }
   deal(body) {
     const v = this.view, s = this.session;
     let cards, up, bj, tier;
@@ -1080,8 +1088,17 @@ class App {
       bj = parseInt(body.bj, 10);
       tier = TIERS.find(t => t.BJ === bj);
       if (!tier) throw new Error("bad set");
-    } catch (e) { v._log("! " + e.message); return v.snapshot(); }
-    if (v.store) { recordSet(tier); v._log(`  recorded set (BJ ${tier.BJ}×) -> local history`); }
+    } catch (e) { v._log("! " + e.message); return this._snap(); }
+    if (!this._replaying) {
+      // begin a fresh round's undo history (the deal itself is not undoable)
+      this.roundCtx = {
+        carry: s.carry, roundNo: s.roundNo,
+        auto: s.auto, threshold: s.threshold, startCarry: s.startCarry,
+        logBefore: v.log_lines.slice(), store: v.store,
+      };
+      this.inputs = [{ type: "deal", body: Object.assign({}, body) }];
+      if (v.store) { recordSet(tier); v._log(`  recorded set (BJ ${tier.BJ}×) -> local history`); }
+    }
     s.startRound(Object.assign({}, tier));
     v.t_dealer_up = up; v.t_dealer_final = null; v.t_set = Object.assign({}, tier);
     v.pair_rank = cards[0];
@@ -1090,24 +1107,57 @@ class App {
     v._log(`set ${describeSet(tier)}; hand ${handStr(cards)} vs dealer ${upLabelV(up)}`);
     v.phase = "play";
     s.deal(cards, up);
-    return v.snapshot();
+    return this._snap();
   }
   choose(body) {
-    if (this.session.pending === "action") this.session.choose(String(body.action));
-    return this.view.snapshot();
+    if (this.session.pending === "action") {
+      this.session.choose(String(body.action));
+      if (!this._replaying) this.inputs.push({ type: "choose", body: { action: String(body.action) } });
+    }
+    return this._snap();
   }
   card(body) {
-    if (this.session.pending === "card") this.view.playCard(parseInt(body.rank, 10));
-    return this.view.snapshot();
+    if (this.session.pending === "card") {
+      const rank = parseInt(body.rank, 10);
+      this.view.playCard(rank);
+      if (!this._replaying) this.inputs.push({ type: "card", body: { rank } });
+    }
+    return this._snap();
   }
   dealer(body) {
     if (this.session.pending === "dealer") {
       const val = body.value;
       this.session.dealer((val === null || val === "bust") ? "bust" : parseInt(val, 10));
+      if (!this._replaying) this.inputs.push({ type: "dealer", body: { value: val } });
     }
-    return this.view.snapshot();
+    return this._snap();
   }
-  reset() { this._newSession(); this.view._log("— reset — fresh session, carry 1× —"); return this.view.snapshot(); }
+  // Step back one entry: rebuild the round from its start and replay all but the
+  // last input (auto-play is deterministic, so this reproduces the prior state).
+  undo() {
+    if (!this.canUndo()) return this._snap();
+    const ctx = this.roundCtx;
+    const keep = this.inputs.slice(0, -1);
+    this.session = new Session(ctx.startCarry, ctx.auto, ctx.threshold);
+    this.session.carry = ctx.carry;
+    this.session.roundNo = ctx.roundNo;
+    this.view = new View(this.session);
+    this.view.log_lines = ctx.logBefore.slice();
+    this.view.store = ctx.store;
+    this._replaying = true;
+    try {
+      for (const inp of keep) {
+        if (inp.type === "deal") this.deal(inp.body);
+        else if (inp.type === "choose") this.choose(inp.body);
+        else if (inp.type === "card") this.card(inp.body);
+        else if (inp.type === "dealer") this.dealer(inp.body);
+      }
+    } finally { this._replaying = false; }
+    this.roundCtx = ctx;
+    this.inputs = keep;
+    return this._snap();
+  }
+  reset() { this._newSession(); this.view._log("— reset — fresh session, carry 1× —"); return this._snap(); }
   settings(body) {
     const s = this.session, v = this.view;
     if ("auto" in body) s.auto = !!body.auto;
@@ -1120,7 +1170,7 @@ class App {
       v.store = !!body.store;
       v._log("  histogram recording " + (v.store ? "ON — each dealt set is saved" : "off"));
     }
-    return v.snapshot();
+    return this._snap();
   }
   stats(body) {
     let n = null;
@@ -1130,7 +1180,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 19 · stable table + slower flash";
+const BUILD = "serverless 20 · undo last entry";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1202,7 +1252,7 @@ const BUILD = window.LBJ.BUILD;
 const APP = new window.LBJ.App();
 const ROUTE = {"/api/state":"state","/api/deal":"deal","/api/choose":"choose",
                "/api/card":"card","/api/dealer":"dealer","/api/reset":"reset",
-               "/api/settings":"settings","/api/stats":"stats"};
+               "/api/settings":"settings","/api/stats":"stats","/api/undo":"undo"};
 /* In-page "API": no network at all — the solver runs right here. Kept as an
    async fn returning the snapshot so existing `await api(...)` callers work
    unchanged, and every call is still logged to the bug panel. */
@@ -1301,6 +1351,7 @@ function renderSetup(){
   if(selBj===null) selBj = SNAP.bj_values[0];
   const box = document.getElementById("dockBody");
   box.innerHTML = "";
+  if(SNAP && SNAP.undo) box.appendChild(undoButton());
   // SET row
   const r1 = document.createElement("div"); r1.className="setuprow";
   r1.innerHTML = `<span class="lab">SET</span>`;
@@ -1360,6 +1411,7 @@ function renderSetup(){
 }
 function renderPlay(snap){
   const box = document.getElementById("dockBody"); box.innerHTML="";
+  if(snap.undo) box.appendChild(undoButton());
   if(snap.prompt){
     const p=document.createElement("div"); p.className="prompt"; p.textContent=snap.prompt;
     box.appendChild(p);
@@ -1439,6 +1491,11 @@ async function doReset(){
   selBj=null; selUp="10"; handStr="";
   apply(await api("/api/reset"));
 }
+function undoButton(){
+  const b=document.createElement("button"); b.className="undo";
+  b.textContent="↶ Undo last entry"; b.onclick=doUndo; return b;
+}
+async function doUndo(){ apply(await api("/api/undo")); }
 async function toggleStore(){ apply(await api("/api/settings", {store: !SNAP.settings.store})); }
 async function toggleAuto(){ apply(await api("/api/settings", {auto: !SNAP.settings.auto})); }
 let thrTimer=null;
