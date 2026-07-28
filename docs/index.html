@@ -1094,7 +1094,7 @@ class App {
       this.roundCtx = {
         carry: s.carry, roundNo: s.roundNo,
         auto: s.auto, threshold: s.threshold, startCarry: s.startCarry,
-        logBefore: v.log_lines.slice(), store: v.store,
+        logBefore: v.log_lines.slice(),
       };
       this.inputs = [{ type: "deal", body: Object.assign({}, body) }];
       if (v.store) { recordSet(tier); v._log(`  recorded set (BJ ${tier.BJ}×) -> local history`); }
@@ -1138,12 +1138,13 @@ class App {
     if (!this.canUndo()) return this._snap();
     const ctx = this.roundCtx;
     const keep = this.inputs.slice(0, -1);
+    const keepStore = this.view.store;   // Record is a global toggle, not round state
     this.session = new Session(ctx.startCarry, ctx.auto, ctx.threshold);
     this.session.carry = ctx.carry;
     this.session.roundNo = ctx.roundNo;
     this.view = new View(this.session);
     this.view.log_lines = ctx.logBefore.slice();
-    this.view.store = ctx.store;
+    this.view.store = keepStore;
     this._replaying = true;
     try {
       for (const inp of keep) {
@@ -1180,7 +1181,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 20 · undo last entry";
+const BUILD = "serverless 21 · record survives undo";
 window.LBJ = { App, BUILD };
 })();
 </script>
