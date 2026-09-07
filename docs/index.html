@@ -40,6 +40,11 @@
   .carry.flash-up{animation:carryUp .82s ease;}
   .carry.flash-down{animation:carryDown .82s ease;}
   .round{font-size:13px; color:var(--muted);}
+  .carrybtn{background:none; padding:0; text-align:left; display:block;}
+  .carrygrid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 0 4px;}
+  .carrygrid button{background:var(--key); color:var(--key-ink); border-radius:11px;
+    padding:15px 0; font-size:17px; font-weight:800;}
+  .carrygrid button.sel{background:var(--gold); color:var(--gold-ink);}
   header .spacer{flex:1;}
   .hbtn{
     background:var(--key); color:var(--key-ink); border-radius:11px;
@@ -203,10 +208,10 @@
 </head>
 <body>
   <header>
-    <div>
+    <button class="carrybtn" onclick="openCarry()" title="Set the carry">
       <div class="carry" id="carry">1×</div>
-      <div class="round" id="round">Round 1</div>
-    </div>
+      <div class="round" id="round">Round 1 · tap to set</div>
+    </button>
     <div class="spacer"></div>
     <button class="hbtn" id="storeBtn" onclick="toggleStore()">Record</button>
     <button class="hbtn" onclick="openStats()">📊</button>
@@ -240,13 +245,19 @@
         <input type="range" min="0" max="1" step="0.01" id="thr" oninput="onThr()">
         <span id="thrVal" style="color:var(--gold); font-weight:700; width:38px;">0.20</span>
       </div>
-      <div class="field">
-        <label>Starting carry</label>
-        <input type="number" min="1" max="25" id="startCarry" onchange="onStartCarry()">
-      </div>
       <div class="dbgtitle" style="margin-top:14px;">HISTORY</div>
       <div class="log" id="log" style="max-height:260px; flex:none;"></div>
       <button class="close" onclick="closeModal('settingsBack')">Close</button>
+    </div>
+  </div>
+
+  <!-- carry modal -->
+  <div class="backdrop" id="carryBack">
+    <div class="modal">
+      <h2>Carry multiplier</h2>
+      <div class="setbody" id="carryNote">The multiplier you carried into this hand.</div>
+      <div class="carrygrid" id="carryGrid"></div>
+      <button class="close" onclick="closeModal('carryBack')">Close</button>
     </div>
   </div>
 
@@ -967,7 +978,10 @@ class View {
     this.t_hands = []; this.t_set = null; this.pair_rank = null; this._card_ctx = null;
     this.situation = "—"; this.evs = []; this.move_buttons = [];
     this.dock_title = "NEW ROUND"; this.prompt = ""; this.phase = "setup";
-    this.log_lines = []; this.store = false;
+    // Recording the dealt multiplier set is ON by default: the histogram is
+    // the whole point of playing with the tool, and a session with it off is
+    // a session of lost data. Toggle it in the header if you need it quiet.
+    this.log_lines = []; this.store = true;
   }
   _ensureSplitHands() {
     if (this.t_hands.length === 2) return;
@@ -1059,6 +1073,7 @@ class View {
       settings: { auto: s.auto, threshold: Math.round(s.threshold * 100) / 100, start_carry: s.startCarry, store: this.store },
       tiers: TIERS.map(t => Object.assign({}, t)),
       bj_values: TIER_BJ_VALUES.slice(),
+      carry_options: Object.keys(CARRY_VALUES).map(Number),
     };
   }
 }
@@ -1070,6 +1085,7 @@ class App {
     this.session = new Session(1, true, 0.20);
     this.view = new View(this.session);
     this.view._log("Pick the revealed set, enter your hand and the dealer upcard, then Deal.");
+    this.view._log("  histogram recording ON — each dealt set is saved");
     this._replaying = false;   // true while rebuilding a round for undo
     this.roundCtx = null;      // how to restart the current round
     this.inputs = [];          // committed steps this round: [{type:'deal'|'choose'|'card'|'dealer', body}]
@@ -1158,7 +1174,27 @@ class App {
     this.inputs = keep;
     return this._snap();
   }
-  reset() { this._newSession(); this.view._log("— reset — fresh session, carry 1× —"); return this._snap(); }
+  reset() {
+    // Record is a global preference, so a reset must not silently turn it off
+    // (same rule as undo, below).
+    const keepStore = this.view ? this.view.store : true;
+    this._newSession();
+    this.view.store = keepStore;
+    this.view._log("— reset — fresh session, carry 1× —");
+    if (!keepStore) this.view._log("  histogram recording is off");
+    return this._snap();
+  }
+  // Set the carry by hand (tap the carry in the header). Only between rounds:
+  // the round's Evaluator is built from the carry it was dealt at, so changing
+  // it mid-round would leave the EVs describing a hand you are not playing.
+  setCarry(body) {
+    const s = this.session, v = this.view;
+    const n = parseInt(body.value, 10);
+    if (!(n in CARRY_VALUES)) { v._log("! not a carry value: " + body.value); return this._snap(); }
+    if (s.pending !== null) { v._log("! finish or reset the round before changing the carry"); return this._snap(); }
+    if (s.carry !== n) { s.carry = n; v._log(`  carry set to ${n}× by hand`); }
+    return this._snap();
+  }
   settings(body) {
     const s = this.session, v = this.view;
     if ("auto" in body) s.auto = !!body.auto;
@@ -1181,7 +1217,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 21 · record survives undo";
+const BUILD = "serverless 22 · tap the carry · record on by default";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1253,7 +1289,8 @@ const BUILD = window.LBJ.BUILD;
 const APP = new window.LBJ.App();
 const ROUTE = {"/api/state":"state","/api/deal":"deal","/api/choose":"choose",
                "/api/card":"card","/api/dealer":"dealer","/api/reset":"reset",
-               "/api/settings":"settings","/api/stats":"stats","/api/undo":"undo"};
+               "/api/settings":"settings","/api/stats":"stats","/api/undo":"undo",
+               "/api/carry":"setCarry"};
 /* In-page "API": no network at all — the solver runs right here. Kept as an
    async fn returning the snapshot so existing `await api(...)` callers work
    unchanged, and every call is still logged to the bug panel. */
@@ -1479,7 +1516,6 @@ function apply(snap){
   document.getElementById("autoSw").classList.toggle("on", st.auto);
   document.getElementById("thr").value = st.threshold;
   document.getElementById("thrVal").textContent = st.threshold.toFixed(2);
-  document.getElementById("startCarry").value = st.start_carry;
 }
 async function send(path, body){ apply(await api(path, body)); }
 
@@ -1506,8 +1542,25 @@ function onThr(){
   clearTimeout(thrTimer);
   thrTimer = setTimeout(()=>api("/api/settings",{threshold:v}).then(apply), 150);
 }
-async function onStartCarry(){
-  apply(await api("/api/settings", {start_carry: parseInt(document.getElementById("startCarry").value)||1}));
+/* ---- carry picker (header tap) ---- */
+function openCarry(){
+  renderCarryGrid();
+  document.getElementById("carryBack").classList.add("show");
+}
+function renderCarryGrid(){
+  const mid = SNAP && SNAP.pending !== null;
+  document.getElementById("carryNote").textContent = mid
+    ? "A round is in play — finish it or reset before changing the carry."
+    : "Tap the multiplier you carried into this hand.";
+  const g = document.getElementById("carryGrid"); g.innerHTML="";
+  (SNAP ? SNAP.carry_options : []).forEach(n=>{
+    const b=document.createElement("button");
+    b.textContent = n+"×";
+    if(n===SNAP.carry) b.classList.add("sel");
+    b.disabled = mid;
+    b.onclick = async ()=>{ await send("/api/carry",{value:n}); closeModal("carryBack"); };
+    g.appendChild(b);
+  });
 }
 function openSettings(){ document.getElementById("settingsBack").classList.add("show"); }
 function closeModal(id){ document.getElementById(id).classList.remove("show"); }
