@@ -16,6 +16,9 @@
     --ink:#e9f1eb; --muted:#93a99b; --gold:#d9a52c; --gold-ink:#2a1f04;
     --key:#2a3b33; --key-ink:#e7efe9; --good:#5cc088; --bad:#e58067;
     --danger:#c0563f; --felt:#2c6b4a; --felt2:#215139;
+    /* the dealer's own colour, taken from the card back — every dealer-side
+       control wears it, so the dealer step never looks like the player step */
+    --deal:#2c4a86; --dkey:#283a56; --dink:#dce7f8;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;}
@@ -66,6 +69,9 @@
   .felt .setind .body{color:#9cc0aa; font-size:11px;}
   .rowlabel{color:#a9c7b5; font-weight:700; font-size:11px; letter-spacing:.4px;
     margin:2px 0 4px; text-align:center;}
+  /* the row that is waiting for the card you are about to tap */
+  .rowlabel.active{color:#fff;}
+  .rowlabel.active::after{content:" ← next"; color:#f6f2c8;}
   .cards{display:flex; align-items:center; gap:0; min-height:88px;}
   .hands{display:flex; gap:26px; flex-wrap:wrap; justify-content:center; min-height:88px;}
   .hand .total{color:#f6f2c8; font-weight:800; font-size:17px; margin-left:10px;}
@@ -82,7 +88,11 @@
     justify-content:center; font-size:30px; padding-top:8px;}
   .card.black .r,.card.black .s{color:#16110a;}
   .card.red .r,.card.red .s{color:#c0392b;}
-  .card.back{background:#2c4a86; border-color:#16294d;}
+  .card.back{background:var(--deal); border-color:#16294d;}
+  /* where the next card lands: an empty, pulsing slot in that row */
+  .card.slot{background:rgba(255,255,255,.07); border:2px dashed rgba(255,255,255,.55);
+    box-shadow:none; animation:slotPulse 1.2s ease-in-out infinite;}
+  @keyframes slotPulse{0%,100%{opacity:.42;}50%{opacity:1;}}
   .card.back::after{content:""; position:absolute; inset:6px; border-radius:4px;
     border:1px solid #7f97c8;}
   .dfinal{color:#f6f2c8; font-weight:800; font-size:15px; margin-left:12px;}
@@ -132,10 +142,13 @@
   .bigkey.sel .sub{color:var(--gold-ink); opacity:.7;}
   .bigkey.bust{background:var(--danger); color:#fff;}
   .bigkey.wide{grid-column:1 / -1;}
+  /* the dealer's upcard is picked on a blue pad, not the player's green one */
+  .bigkeys.cardpad.dealer .bigkey{background:var(--dkey); color:var(--dink);}
   .bigkey:disabled{opacity:.28;}
   .phaserow{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
   .phaserow .need{flex:1; text-align:center; color:var(--gold);
     font-weight:800; font-size:14px;}
+  .phaserow .need.dealer{color:#9dc0ee;}
   .stepbtn{background:var(--key); color:var(--key-ink); border-radius:10px;
     padding:9px 12px; font-size:14px; font-weight:800; flex:0 0 auto;}
   .stepbtn:disabled{opacity:.3;}
@@ -1210,7 +1223,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 23 · phased entry: set → hands → play";
+const BUILD = "serverless 24 · the dealer upcard is its own screen";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1230,8 +1243,12 @@ const RANK_OF = {}; CARD_KEYS.forEach(([lab,rank])=>{ RANK_OF[lab]=rank; });
 function setupTable(){
   const cards = picks.slice(0,2).map(t=>RANK_OF[t]);
   const tier = (SNAP && SNAP.tiers) ? SNAP.tiers.find(t=>t.BJ===selBj) : null;
+  // Which row the next tap fills — the felt marks it with a pulsing empty slot.
+  const awaiting = picks.length < 2 ? "you" : picks.length === 2 ? "dealer" : null;
   return { set: tier||null, dealer_up: (curUp()!=null ? RANK_OF[curUp()] : null),
-           dealer_final: null, hands: cards.length ? [{cards, label:"YOU", note:""}] : [] };
+           dealer_final: null, awaiting,
+           hands: (cards.length || awaiting==="you")
+                    ? [{cards, label:"YOU", note:"", slot: awaiting==="you"}] : [] };
 }
 function renderPreview(){ renderFelt(setupTable()); }
 let SNAP = null;
@@ -1322,6 +1339,9 @@ function cardEl(rank, idx, back){
   d.innerHTML = `<div class="r">${rankText(rank)}</div><div class="s">${glyph}</div>`;
   return d;
 }
+function slotEl(){
+  const d = document.createElement("div"); d.className="card slot"; return d;
+}
 function renderFelt(t){
   const felt = document.getElementById("felt");
   felt.innerHTML = "";
@@ -1332,13 +1352,18 @@ function renderFelt(t){
     felt.appendChild(ind);
   }
   // dealer
-  const dl = document.createElement("div"); dl.className="rowlabel"; dl.textContent="DEALER";
+  const dl = document.createElement("div");
+  dl.className = "rowlabel" + (t.awaiting==="dealer" ? " active" : "");
+  dl.textContent="DEALER";
   felt.appendChild(dl);
   const drow = document.createElement("div"); drow.className="row";
   const dcards = document.createElement("div"); dcards.className="cards";
   if(t.dealer_up != null){
     dcards.appendChild(cardEl(t.dealer_up, 0, false));
     dcards.appendChild(cardEl(null, 0, true));
+  } else if(t.awaiting==="dealer"){
+    dcards.appendChild(slotEl());
+    dcards.appendChild(cardEl(null, 0, true));   // the hole card, for the shape
   }
   drow.appendChild(dcards);
   if(t.dealer_final != null){
@@ -1348,7 +1373,8 @@ function renderFelt(t){
   }
   felt.appendChild(drow);
   // player
-  const pl = document.createElement("div"); pl.className="rowlabel";
+  const pl = document.createElement("div");
+  pl.className = "rowlabel" + (t.awaiting==="you" ? " active" : "");
   pl.style.marginTop="12px"; pl.textContent="YOU"; felt.appendChild(pl);
   const hands = document.createElement("div"); hands.className="hands";
   // On a split, show hand 1 (played first) on the RIGHT, hand 2 on the left.
@@ -1358,6 +1384,7 @@ function renderFelt(t){
     const top = document.createElement("div"); top.className="row";
     const cc = document.createElement("div"); cc.className="cards";
     h.cards.forEach((r,i)=>cc.appendChild(cardEl(r, i+1, false)));
+    if(h.slot) cc.appendChild(slotEl());
     top.appendChild(cc);
     const tot = document.createElement("div"); tot.className="total";
     tot.textContent = totalText(h.cards); top.appendChild(tot);
@@ -1388,8 +1415,9 @@ function setBody(bj){
 }
 /* A,2,3 / 4,5,6 / 7,8,9 / K,Q,J,T — the same four rows of three everywhere a
    card is entered, so the key you want is always in the same place. */
-function bigCardPad(onPick, locked){
-  const g = document.createElement("div"); g.className="bigkeys cardpad";
+function bigCardPad(onPick, locked, dealer){
+  const g = document.createElement("div");
+  g.className = "bigkeys cardpad" + (dealer ? " dealer" : "");
   CARD_KEYS.forEach(([lab,rank])=>{
     const b=document.createElement("button");
     b.className="bigkey"+(lab==="10"?" wide":"");
@@ -1422,25 +1450,31 @@ function renderSetPhase(){
 /* Step 2 — your two cards, then the dealer upcard, then DEAL. */
 function renderHandPhase(){
   const box = document.getElementById("dockBody"); box.innerHTML="";
-  document.getElementById("dockTitle").textContent = "STEP 2 · HANDS";
-  if(SNAP && SNAP.undo) box.appendChild(undoButton());
   const ready = picks.length===3;
+  // The dealer's upcard is its own screen, not a third tap on the same one:
+  // blue pad, blue prompt, its own title, and the felt slot pulsing in the
+  // DEALER row. Missing that the step changed is how you enter it as a card.
+  const dealerStep = picks.length===2;
+  document.getElementById("dockTitle").textContent =
+    ready ? "STEP 2 · READY" : dealerStep ? "STEP 2 · DEALER UPCARD" : "STEP 2 · YOUR HAND";
+  if(SNAP && SNAP.undo) box.appendChild(undoButton());
   const bar = document.createElement("div"); bar.className="phaserow";
   const back = document.createElement("button"); back.className="stepbtn";
   back.textContent = "‹ BJ "+selBj+"×";
   back.onclick = ()=>{ setupStep="set"; renderSetup(); };
   bar.appendChild(back);
-  const need = document.createElement("div"); need.className="need";
+  const need = document.createElement("div");
+  need.className = "need" + (dealerStep ? " dealer" : "");
   need.textContent = ready ? "Ready — tap DEAL"
-                   : picks.length===0 ? "YOUR FIRST CARD"
-                   : picks.length===1 ? "YOUR SECOND CARD" : "DEALER UPCARD";
+                   : dealerStep ? "↑ DEALER UPCARD"
+                   : picks.length===0 ? "YOUR FIRST CARD" : "YOUR SECOND CARD";
   bar.appendChild(need);
   const del = document.createElement("button"); del.className="stepbtn";
   del.textContent = "⌫"; del.disabled = picks.length===0;
   del.onclick = ()=>{ picks.pop(); renderSetup(); };
   bar.appendChild(del);
   box.appendChild(bar);
-  box.appendChild(bigCardPad(lab=>{ picks.push(lab); renderSetup(); }, ready));
+  box.appendChild(bigCardPad(lab=>{ picks.push(lab); renderSetup(); }, ready, dealerStep));
   const deal = document.createElement("button"); deal.className="deal";
   deal.textContent = "DEAL"; deal.disabled = !ready; deal.onclick = doDeal;
   box.appendChild(deal);

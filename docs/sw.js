@@ -9,7 +9,7 @@
  *   - everything else (manifest, …): cache-first.
  *
  * Bump CACHE on every release so the old cache is purged on activate. */
-const CACHE = "lbj-v4";
+const CACHE = "lbj-v5";
 // Relative to the worker's scope, so this works whether the app is served from
 // "/" (localhost) or a project subpath like "/erangur/" (GitHub Pages).
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest"];
