@@ -6,10 +6,13 @@
  *
  *   - the page itself (navigations): NETWORK-FIRST — when online you always get
  *     the latest build; when offline you get the cached copy.
+ *   - version.json: NETWORK-ONLY, never cached. It is how the running app
+ *     learns that a newer build exists; a cached copy would mean it never
+ *     hears about one again.
  *   - everything else (manifest, …): cache-first.
  *
  * Bump CACHE on every release so the old cache is purged on activate. */
-const CACHE = "lbj-v5";
+const CACHE = "lbj-v6";
 // Relative to the worker's scope, so this works whether the app is served from
 // "/" (localhost) or a project subpath like "/erangur/" (GitHub Pages).
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest"];
@@ -34,6 +37,13 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
+
+  // The version manifest: straight from the network, never stored. Offline the
+  // request fails, and the page treats that as "could not check".
+  if (new URL(req.url).pathname.endsWith("version.json")) {
+    e.respondWith(fetch(req).catch(() => Response.error()));
+    return;
+  }
 
   // The page: network-first, so a new build shows as soon as you're online.
   if (req.mode === "navigate") {

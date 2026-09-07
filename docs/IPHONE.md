@@ -32,8 +32,18 @@ your browser the file once; all the game logic runs locally on your phone.
 ## Updating it later
 
 When new changes land on `iphone-webapp`, GitHub re-publishes automatically.
-Open the icon (online, briefly) and it picks up the new version; the service
-worker then re-caches it for offline.
+
+The app checks for itself: on every start (and whenever you bring it back to
+the foreground) it fetches `version.json` and compares the build number there
+with its own. If a newer build is out you get **"New version available"** with
+that build's release notes and two buttons — **Update now** (clears the caches
+and reloads into the new build) or **Later** (asks again next time you start
+it; the 🐞 button keeps a gold dot in the meantime). Offline, the check fails
+quietly and the app carries on.
+
+Shipping a release means bumping four things together — `BUILD_NO`/`BUILD` in
+`index.html`, `CACHE` in `sw.js`, `version.json`, and an entry in
+`RELEASES.md`. `python tests/test_solver.py` checks they agree.
 
 ## If something looks wrong
 

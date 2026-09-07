@@ -1,0 +1,10 @@
+{
+  "build": 25,
+  "name": "serverless 25",
+  "date": "2026-09-07",
+  "notes": [
+    "The app now checks for a new version each time you open it, and shows what changed.",
+    "Tap the carry (top left) to set it. Recording is on by default and survives a reset.",
+    "Entering a hand is now three screens: multiplier set, then your hand, then the dealer upcard."
+  ]
+}

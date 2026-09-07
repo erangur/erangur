@@ -370,12 +370,38 @@ def test_overall_histogram():
         os.rmdir(directory)
 
 
+def test_webapp_version_manifest():
+    print("web app version manifest (docs/):")
+    import json
+    import re
+    docs = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+    page = open(os.path.join(docs, "index.html"), encoding="utf-8").read()
+    manifest = json.load(open(os.path.join(docs, "version.json"), encoding="utf-8"))
+    notes = open(os.path.join(docs, "RELEASES.md"), encoding="utf-8").read()
+    build_no = re.search(r"const BUILD_NO = (\d+);", page)
+    check("page declares BUILD_NO", build_no is not None)
+    # These must agree or the app misjudges its own version: too low and it
+    # offers an update it already has (forever), too high and it never offers
+    # the next one.
+    check("BUILD_NO matches version.json",
+          build_no is not None and int(build_no.group(1)) == int(manifest["build"]))
+    check("service worker cache was bumped with it",
+          re.search(r'const CACHE = "lbj-v(\d+)"',
+                    open(os.path.join(docs, "sw.js"), encoding="utf-8").read()) is not None)
+    check("manifest carries short release notes",
+          isinstance(manifest.get("notes"), list) and 1 <= len(manifest["notes"]) <= 5
+          and all(isinstance(n, str) and 0 < len(n) <= 160 for n in manifest["notes"]))
+    check("this build has an entry in RELEASES.md",
+          "build %s " % manifest["build"] in notes)
+
+
 if __name__ == "__main__":
     for t in [test_cards, test_dealer, test_basic_strategy, test_house_edge,
               test_split_arithmetic, test_node_actions, test_joint_split_hand,
               test_carry_convergence, test_sim_consistency, test_auto_play_policy,
               test_session_round, test_session_split, test_record_observed_set,
-              test_observed_tier_counts, test_overall_histogram]:
+              test_observed_tier_counts, test_overall_histogram,
+              test_webapp_version_manifest]:
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)

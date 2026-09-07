@@ -57,6 +57,11 @@
   }
   .hbtn.reset{color:var(--danger); font-size:19px; line-height:1; padding:7px 11px;}
   .hbtn.on{background:var(--gold); color:var(--gold-ink);}
+  /* an update is waiting: the bug button carries the news */
+  .hbtn.upd{position:relative; box-shadow:inset 0 0 0 2px var(--gold);}
+  .hbtn.upd::after{content:""; position:absolute; top:-3px; right:-3px;
+    width:9px; height:9px; border-radius:50%; background:var(--gold);
+    border:2px solid var(--bar);}
 
   /* ---- felt table ---- */
   .felt{
@@ -171,6 +176,9 @@
   .modal{background:var(--bg); border:1px solid var(--line); border-radius:16px;
     padding:18px; width:100%; max-width:420px; max-height:86%; overflow-y:auto;}
   .modal h2{margin:0 0 14px; font-size:16px;}
+  .updver{color:var(--muted); font-size:12px; margin:-8px 0 12px;}
+  .notes{margin:0; padding-left:20px; font-size:14px; line-height:1.5;}
+  .notes li{margin:6px 0;}
   .field{display:flex; align-items:center; justify-content:space-between;
     gap:12px; margin:12px 0;}
   .field label{font-size:14px;}
@@ -257,6 +265,18 @@
     </div>
   </div>
 
+  <!-- update modal -->
+  <div class="backdrop" id="updBack">
+    <div class="modal">
+      <h2>New version available</h2>
+      <div class="updver" id="updVer"></div>
+      <ul class="notes" id="updNotes"></ul>
+      <button class="close" style="background:var(--gold); color:var(--gold-ink);"
+              onclick="checkUpdate()">Update now</button>
+      <button class="close" onclick="dismissUpdate()">Later</button>
+    </div>
+  </div>
+
   <!-- carry modal -->
   <div class="backdrop" id="carryBack">
     <div class="modal">
@@ -292,7 +312,8 @@
       <h2>Debug log <span id="dbgBuild" style="color:var(--muted); font-size:12px; font-weight:400;"></span></h2>
       <div class="dbgtitle">ACTIVITY LOG — runs fully in this page, no server</div>
       <pre class="dbglog" id="dbgClient"></pre>
-      <button class="close" style="background:var(--gold); color:var(--gold-ink);" onclick="checkUpdate()">↻ Check for updates &amp; reload</button>
+      <button class="close" style="background:var(--gold); color:var(--gold-ink);" onclick="manualCheck()">↻ Check for updates</button>
+      <button class="close" onclick="checkUpdate()">Reload &amp; clear cache</button>
       <button class="close" onclick="closeModal('debugBack')">Close</button>
     </div>
   </div>
@@ -1223,7 +1244,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 24 · the dealer upcard is its own screen";
+const BUILD = "serverless 25 · checks for updates on start";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1244,7 +1265,9 @@ function setupTable(){
   const cards = picks.slice(0,2).map(t=>RANK_OF[t]);
   const tier = (SNAP && SNAP.tiers) ? SNAP.tiers.find(t=>t.BJ===selBj) : null;
   // Which row the next tap fills — the felt marks it with a pulsing empty slot.
-  const awaiting = picks.length < 2 ? "you" : picks.length === 2 ? "dealer" : null;
+  // Only in step 2: during step 1 no card is being entered at all.
+  const awaiting = setupStep !== "hand" ? null
+                 : picks.length < 2 ? "you" : picks.length === 2 ? "dealer" : null;
   return { set: tier||null, dealer_up: (curUp()!=null ? RANK_OF[curUp()] : null),
            dealer_final: null, awaiting,
            hands: (cards.length || awaiting==="you")
@@ -1588,14 +1611,69 @@ function renderCarryGrid(){
 function openSettings(){ document.getElementById("settingsBack").classList.add("show"); }
 function closeModal(id){ document.getElementById(id).classList.remove("show"); }
 
+/* ---- update check ----------------------------------------------------------
+   The app is a home-screen icon, so nothing tells you a new build shipped.
+   On every start (and whenever it comes back to the foreground) we ask the
+   server for version.json — a tiny manifest holding the newest build number
+   and its release notes — and if it is ahead of this page, we offer to update.
+   "Later" holds until the app is next started, not forever. The manifest is
+   fetched no-store and the service worker never caches it (see sw.js): a
+   cached answer here would mean never hearing about an update again. */
+const BUILD_NO = 25;                       // bumped with every release
+const SKIP_KEY = "lbj_skip_build";
+let PENDING_VER = null, LAST_CHECK = 0;
+async function fetchVersion(){
+  const r = await fetch("version.json?t="+Date.now(), {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return await r.json();
+}
+function skippedBuild(){ try{ return sessionStorage.getItem(SKIP_KEY); }catch(e){ return null; } }
+async function checkForUpdate(auto){
+  LAST_CHECK = Date.now();
+  let v;
+  try{ v = await fetchVersion(); }
+  catch(e){ dbg("update check failed: "+e.message, "err"); return null; }
+  const n = parseInt(v.build, 10);
+  if(!(n > BUILD_NO)){ dbg("up to date — build "+BUILD_NO, "ok"); return null; }
+  PENDING_VER = v;
+  dbg("update available: build "+n+(v.name ? " ("+v.name+")" : ""));
+  document.getElementById("dbgBtn").classList.add("upd");
+  if(auto && skippedBuild() === String(n)) return v;   // already offered this run
+  showUpdate(v);
+  return v;
+}
+function showUpdate(v){
+  document.getElementById("updVer").textContent =
+    (v.name || ("build "+v.build)) + (v.date ? "  ·  "+v.date : "")
+    + "   (you have build "+BUILD_NO+")";
+  const ul = document.getElementById("updNotes"); ul.innerHTML="";
+  (Array.isArray(v.notes) ? v.notes : []).slice(0,5).forEach(t=>{
+    const li=document.createElement("li"); li.textContent=String(t); ul.appendChild(li);
+  });
+  document.getElementById("updBack").classList.add("show");
+}
+function dismissUpdate(){
+  if(PENDING_VER){
+    try{ sessionStorage.setItem(SKIP_KEY, String(parseInt(PENDING_VER.build,10))); }catch(e){}
+  }
+  dbg("update postponed — it will ask again next start");
+  closeModal("updBack");
+}
+async function manualCheck(){
+  dbg("checking for updates…");
+  await checkForUpdate(false);
+  renderClientLog();
+}
+
 /* ---- debug panel ---- */
 function openDebug(){
   document.getElementById("debugBack").classList.add("show");
   document.getElementById("dbgBuild").textContent = "· "+BUILD;
   renderClientLog();
 }
+/* Take the update: drop every cache and the workers holding it, then reload. */
 async function checkUpdate(){
-  dbg("checking for updates…");
+  dbg("updating — clearing caches and reloading…");
   try{
     if("serviceWorker" in navigator){
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -1660,6 +1738,12 @@ if("serviceWorker" in navigator){
     ()=>dbg("offline cache ready (service worker registered)","ok"),
     (e)=>dbg("service worker failed: "+e.message,"err"));
 }
+// On start, and again when the icon is re-opened: iOS resumes the page rather
+// than reloading it, so "turning the app on" is usually a foreground event.
+checkForUpdate(true);
+document.addEventListener("visibilitychange", ()=>{
+  if(!document.hidden && Date.now()-LAST_CHECK > 60000) checkForUpdate(true);
+});
 </script>
 </body>
 </html>
