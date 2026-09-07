@@ -35,6 +35,8 @@
   }
   .carry{font-size:31px; font-weight:800; color:var(--gold); line-height:1;
     display:inline-block; transform-origin:left center;}
+  .carryline{display:flex; align-items:center; gap:5px;}
+  .chev{color:var(--muted); font-size:14px; line-height:1;}
   @keyframes carryUp{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--good);}100%{transform:scale(1);}}
   @keyframes carryDown{0%{transform:scale(1);}30%{transform:scale(1.3); color:var(--danger);}100%{transform:scale(1);}}
   .carry.flash-up{animation:carryUp .82s ease;}
@@ -56,7 +58,8 @@
   /* ---- felt table ---- */
   .felt{
     background:linear-gradient(160deg,var(--felt),var(--felt2));
-    flex:1 0 auto; padding:10px 14px 14px; position:relative; min-height:150px;
+    flex:0 1 auto; padding:8px 14px 12px; position:relative; min-height:0;
+    overflow:hidden;
   }
   .felt .setind{position:absolute; top:8px; right:12px; text-align:right;}
   .felt .setind .bj{color:#cfe4d6; font-weight:700; font-size:12px;}
@@ -95,57 +98,47 @@
   .chip.best{background:var(--gold); color:var(--gold-ink);}
 
   /* ---- dock ---- */
-  .dock{background:var(--bar); padding:12px 14px; flex:0 0 auto;}
+  /* The dock keeps its content height (its keys must never be clipped) and
+     takes every pixel the felt does not need; the felt shrinks/crops first. */
+  .dock{background:var(--bar); padding:10px 14px 12px; flex:1 1 auto;
+    display:flex; flex-direction:column;}
   .docktitle{color:var(--muted); font-weight:700; font-size:11px;
     letter-spacing:.5px; margin-bottom:9px;}
-  .prompt{color:var(--muted); font-size:13px; margin-bottom:8px;}
-  .setuprow{display:flex; align-items:center; gap:6px; margin:5px 0; flex-wrap:wrap;}
-  .setuprow .lab{color:var(--muted); font-weight:700; font-size:11px; width:56px;
-    flex:0 0 auto;}
+  .prompt{color:var(--muted); font-size:13px;}
   .setbody{color:var(--muted); font-size:12px;}
-  .dockdiv{border-top:1px solid var(--line); margin:9px 0 7px;}
-  .tog{
-    background:var(--bar); color:var(--key-ink); border:1px solid var(--line);
-    border-radius:10px; padding:8px 10px; font-size:13px; font-weight:700;
-    min-width:40px;
-  }
-  .tog.sel{background:var(--gold); color:var(--gold-ink); border-color:var(--gold);}
-  input.hand{
-    background:var(--panel); color:var(--ink); border:1px solid var(--line);
-    border-radius:8px; padding:8px 10px; font-size:15px; width:96px; flex:0 0 auto;
-  }
-  input.hand:focus{outline:none; border-color:var(--gold);}
-  .keyrow{display:flex; gap:6px; flex-wrap:wrap;}
-  .key{
-    background:var(--key); color:var(--key-ink); border-radius:10px;
-    padding:8px 0; font-size:14px; font-weight:700; flex:1 1 auto; min-width:38px;
-  }
-  .btn-clear{background:var(--key); color:var(--key-ink); border-radius:10px;
-    padding:8px 12px; font-weight:700;}
-  .undo{width:100%; background:var(--key); color:var(--muted); border-radius:10px;
-    padding:9px; font-size:13px; font-weight:700; margin-bottom:10px;}
+  .undo{width:100%; flex:0 0 auto; background:var(--key); color:var(--muted);
+    border-radius:10px; padding:9px; font-size:13px; font-weight:700;}
   .deal{
-    width:100%; margin-top:11px; background:var(--gold); color:var(--gold-ink);
-    border-radius:14px; padding:15px; font-size:17px; font-weight:800;
+    width:100%; flex:0 0 auto; background:var(--gold); color:var(--gold-ink);
+    border-radius:14px; padding:16px; font-size:18px; font-weight:800;
   }
-  .actions{display:flex; gap:8px;}
-  .act{
-    flex:1 1 0; background:var(--key); color:var(--key-ink); border-radius:13px;
-    padding:15px 6px; font-size:15px; font-weight:800;
+  .deal:disabled{opacity:.3;}
+
+  /* ---- phase keypads: one job per screen, nothing else to hit ---- */
+  #dockBody{flex:1 1 auto; display:flex; flex-direction:column; gap:8px;
+    min-height:0;}
+  .bigkeys{flex:1 1 auto; display:grid; gap:8px; min-height:0;}
+  .bigkeys.cardpad{grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(4,1fr);}
+  .bigkeys.mults{grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(3,1fr);}
+  .bigkeys.dealerpad{grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(3,1fr);}
+  .bigkeys.acts{grid-template-columns:1fr;}
+  .bigkey{
+    background:var(--key); color:var(--key-ink); border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:25px; font-weight:800; min-height:42px; padding:4px 2px;
   }
-  .act.best{background:var(--gold); color:var(--gold-ink);}
-  .cardkeys{display:flex; flex-wrap:wrap; gap:6px;}
-  .cardkeys .key{padding:13px 0;}
-  /* card-value keys share the row equally; the ten-value (K/Q/J/10) is 4x wide */
-  .cardbtn{flex:1 1 0; min-width:0;}
-  /* row 2 is 7,8,9 + ten; grow:3 makes those three match the six on row 1,
-     and the ten fills the remaining three slots */
-  .cardbtn.ten{flex-grow:3;}
-  /* SET tier buttons fill their row so all fit on one line */
-  .setbtn{flex:1 1 0; min-width:0; padding-left:3px; padding-right:3px; font-size:12px; white-space:nowrap;}
-  .dealerkeys{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
-  .dealerkeys .key{padding:14px 0;}
-  .dealerkeys .key.bust{background:var(--danger); color:#fff;}
+  .bigkey .sub{font-size:11.5px; font-weight:700; color:var(--muted); margin-top:5px;}
+  .bigkey.sel,.bigkey.best{background:var(--gold); color:var(--gold-ink);}
+  .bigkey.sel .sub{color:var(--gold-ink); opacity:.7;}
+  .bigkey.bust{background:var(--danger); color:#fff;}
+  .bigkey.wide{grid-column:1 / -1;}
+  .bigkey:disabled{opacity:.28;}
+  .phaserow{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .phaserow .need{flex:1; text-align:center; color:var(--gold);
+    font-weight:800; font-size:14px;}
+  .stepbtn{background:var(--key); color:var(--key-ink); border-radius:10px;
+    padding:9px 12px; font-size:14px; font-weight:800; flex:0 0 auto;}
+  .stepbtn:disabled{opacity:.3;}
 
   /* ---- history ---- */
   .history{flex:1 1 auto; overflow:hidden; padding:9px 14px 4px;
@@ -209,8 +202,8 @@
 <body>
   <header>
     <button class="carrybtn" onclick="openCarry()" title="Set the carry">
-      <div class="carry" id="carry">1×</div>
-      <div class="round" id="round">Round 1 · tap to set</div>
+      <div class="carryline"><span class="carry" id="carry">1×</span><span class="chev">▾</span></div>
+      <div class="round" id="round">Round 1</div>
     </button>
     <div class="spacer"></div>
     <button class="hbtn" id="storeBtn" onclick="toggleStore()">Record</button>
@@ -1217,7 +1210,7 @@ class App {
   }
 }
 
-const BUILD = "serverless 22 · tap the carry · record on by default";
+const BUILD = "serverless 23 · phased entry: set → hands → play";
 window.LBJ = { App, BUILD };
 })();
 </script>
@@ -1235,15 +1228,23 @@ function keyLabel(lab){ return lab==="10" ? "K,Q,J,T" : lab; }
 const RANK_OF = {}; CARD_KEYS.forEach(([lab,rank])=>{ RANK_OF[lab]=rank; });
 // Build a felt "table" from the in-progress setup picks so they show before Deal.
 function setupTable(){
-  const cards = handStr ? handStr.split(",").filter(x=>x).map(t=>RANK_OF[t]) : [];
+  const cards = picks.slice(0,2).map(t=>RANK_OF[t]);
   const tier = (SNAP && SNAP.tiers) ? SNAP.tiers.find(t=>t.BJ===selBj) : null;
-  return { set: tier||null, dealer_up: (selUp!=null ? RANK_OF[selUp] : null),
+  return { set: tier||null, dealer_up: (curUp()!=null ? RANK_OF[curUp()] : null),
            dealer_final: null, hands: cards.length ? [{cards, label:"YOU", note:""}] : [] };
 }
 function renderPreview(){ renderFelt(setupTable()); }
-function dockSep(){ const d=document.createElement("div"); d.className="dockdiv"; return d; }
 let SNAP = null;
-let selBj = null, selUp = "10", handStr = "";
+/* Entering a round is split into two screens, each with a single job and one
+   full-size keypad: step 1 picks the revealed multiplier set, step 2 taps your
+   two cards and the dealer upcard. After DEAL the dock holds only the buttons
+   the round is waiting on. Fewer, bigger targets = faster entry at the table. */
+let selBj = null;
+let setupStep = "set";      // "set" | "hand"
+let picks = [];             // ["10","6","9"] — your two cards, then the upcard
+function curHand(){ return picks.slice(0,2).join(","); }
+function curUp(){ return picks.length > 2 ? picks[2] : null; }
+function resetSetup(){ selBj = null; setupStep = "set"; picks = []; }
 
 /* ---- client-side debug log ---- */
 const CLIENT_LOG = [];
@@ -1385,102 +1386,90 @@ function setBody(bj){
   const tier = SNAP.tiers.find(t=>t.BJ===bj);
   return tier ? ["18","19","20","21"].map(b=>tier[b]).join("/") : "";
 }
-function renderSetup(){
-  if(selBj===null) selBj = SNAP.bj_values[0];
-  const box = document.getElementById("dockBody");
-  box.innerHTML = "";
-  if(SNAP && SNAP.undo) box.appendChild(undoButton());
-  // SET row
-  const r1 = document.createElement("div"); r1.className="setuprow";
-  r1.innerHTML = `<span class="lab">SET</span>`;
-  SNAP.bj_values.forEach(bj=>{
-    const b = document.createElement("button");
-    b.className = "tog setbtn" + (bj===selBj ? " sel":""); b.textContent = "BJ "+bj+"×";
-    b.onclick = ()=>{ selBj=bj; renderSetup(); };
-    r1.appendChild(b);
-  });
-  box.appendChild(r1);
-  box.appendChild(dockSep());
-  // HAND row: label + read-only display + Clear, all on one line
-  const r2 = document.createElement("div"); r2.className="setuprow";
-  r2.innerHTML = `<span class="lab">HAND</span>`;
-  const inp = document.createElement("input"); inp.className="hand"; inp.value=handStr;
-  inp.placeholder="tap cards"; inp.readOnly=true;
-  r2.appendChild(inp);
-  const clr=document.createElement("button"); clr.className="btn-clear"; clr.textContent="Clear";
-  clr.onclick=()=>{ handStr=""; document.querySelector("input.hand").value=""; renderPreview(); };
-  r2.appendChild(clr);
-  box.appendChild(r2);
-  // HAND keys — two rows of five so the buttons are big
-  const handKey=(lab)=>{
+/* A,2,3 / 4,5,6 / 7,8,9 / K,Q,J,T — the same four rows of three everywhere a
+   card is entered, so the key you want is always in the same place. */
+function bigCardPad(onPick, locked){
+  const g = document.createElement("div"); g.className="bigkeys cardpad";
+  CARD_KEYS.forEach(([lab,rank])=>{
     const b=document.createElement("button");
-    b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
-    b.onclick=()=>{ if(handStr.split(",").filter(x=>x).length>=2) return;  // a starting hand is 2 cards
-                    handStr = handStr ? handStr+","+lab : lab;
-                    document.querySelector("input.hand").value = handStr;
-                    renderPreview(); };
-    return b;
-  };
-  [[0,6],[6,10]].forEach(([a,z])=>{
-    const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
-    CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(handKey(lab)));
-    box.appendChild(kr);
+    b.className="bigkey"+(lab==="10"?" wide":"");
+    b.textContent=keyLabel(lab); b.disabled=!!locked;
+    b.onclick=()=>onPick(lab, rank);
+    g.appendChild(b);
   });
-  box.appendChild(dockSep());
-  // UPCARD — label line, then two rows of five
-  const ul=document.createElement("div"); ul.className="setuprow";
-  ul.innerHTML = `<span class="lab">UPCARD</span>`;
-  box.appendChild(ul);
-  const upKey=(lab)=>{
-    const b=document.createElement("button");
-    b.className="tog cardbtn"+(lab==="10"?" ten":"")+(lab===selUp?" sel":""); b.textContent=keyLabel(lab);
-    b.onclick=()=>{ selUp=lab; renderSetup(); };
-    return b;
-  };
-  [[0,6],[6,10]].forEach(([a,z])=>{
-    const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
-    CARD_KEYS.slice(a,z).forEach(([lab])=>kr.appendChild(upKey(lab)));
-    box.appendChild(kr);
-  });
-  // DEAL
-  const deal=document.createElement("button"); deal.className="deal"; deal.textContent="DEAL";
-  deal.onclick=doDeal; box.appendChild(deal);
-  renderPreview();   // show the current SET/HAND/UPCARD picks on the felt
+  return g;
 }
+function renderSetup(){
+  if(selBj===null) setupStep = "set";
+  if(setupStep==="set") renderSetPhase(); else renderHandPhase();
+  renderPreview();   // the picks so far show on the felt as you tap them
+}
+/* Step 1 — the revealed multiplier set, and nothing else. */
+function renderSetPhase(){
+  const box = document.getElementById("dockBody"); box.innerHTML="";
+  document.getElementById("dockTitle").textContent = "STEP 1 · MULTIPLIER SET";
+  if(SNAP && SNAP.undo) box.appendChild(undoButton());
+  const g = document.createElement("div"); g.className="bigkeys mults";
+  SNAP.bj_values.forEach(bj=>{
+    const b=document.createElement("button");
+    b.className="bigkey"+(bj===selBj?" sel":"");
+    b.innerHTML = `<div>BJ ${bj}×</div><div class="sub">18-21 &nbsp;${setBody(bj)}</div>`;
+    b.onclick=()=>{ selBj=bj; setupStep="hand"; renderSetup(); };
+    g.appendChild(b);
+  });
+  box.appendChild(g);
+}
+/* Step 2 — your two cards, then the dealer upcard, then DEAL. */
+function renderHandPhase(){
+  const box = document.getElementById("dockBody"); box.innerHTML="";
+  document.getElementById("dockTitle").textContent = "STEP 2 · HANDS";
+  if(SNAP && SNAP.undo) box.appendChild(undoButton());
+  const ready = picks.length===3;
+  const bar = document.createElement("div"); bar.className="phaserow";
+  const back = document.createElement("button"); back.className="stepbtn";
+  back.textContent = "‹ BJ "+selBj+"×";
+  back.onclick = ()=>{ setupStep="set"; renderSetup(); };
+  bar.appendChild(back);
+  const need = document.createElement("div"); need.className="need";
+  need.textContent = ready ? "Ready — tap DEAL"
+                   : picks.length===0 ? "YOUR FIRST CARD"
+                   : picks.length===1 ? "YOUR SECOND CARD" : "DEALER UPCARD";
+  bar.appendChild(need);
+  const del = document.createElement("button"); del.className="stepbtn";
+  del.textContent = "⌫"; del.disabled = picks.length===0;
+  del.onclick = ()=>{ picks.pop(); renderSetup(); };
+  bar.appendChild(del);
+  box.appendChild(bar);
+  box.appendChild(bigCardPad(lab=>{ picks.push(lab); renderSetup(); }, ready));
+  const deal = document.createElement("button"); deal.className="deal";
+  deal.textContent = "DEAL"; deal.disabled = !ready; deal.onclick = doDeal;
+  box.appendChild(deal);
+}
+/* Step 3 — whatever the round is waiting on: a move, a card, or the dealer. */
 function renderPlay(snap){
   const box = document.getElementById("dockBody"); box.innerHTML="";
   if(snap.undo) box.appendChild(undoButton());
   if(snap.prompt){
-    const p=document.createElement("div"); p.className="prompt"; p.textContent=snap.prompt;
+    const p=document.createElement("div"); p.className="prompt";
+    p.style.flex="0 0 auto"; p.style.margin="0"; p.textContent=snap.prompt;
     box.appendChild(p);
   }
   if(snap.pending==="action"){
-    const a=document.createElement("div"); a.className="actions";
+    const g=document.createElement("div"); g.className="bigkeys acts";
     snap.move_buttons.forEach(m=>{
       const b=document.createElement("button");
-      b.className="act"+(m.best?" best":""); b.textContent=m.label;
+      b.className="bigkey"+(m.best?" best":""); b.textContent=m.label;
       b.onclick=()=>send("/api/choose",{action:m.name});
-      a.appendChild(b);
+      g.appendChild(b);
     });
-    box.appendChild(a);
+    box.appendChild(g);
   } else if(snap.pending==="card"){
-    // same two-row layout as HAND/UPCARD (A-6 / 7-K,Q,J,T)
-    const cardKey=([lab,rank])=>{
-      const b=document.createElement("button");
-      b.className="key cardbtn"+(lab==="10"?" ten":""); b.textContent=keyLabel(lab);
-      b.onclick=()=>send("/api/card",{rank});
-      return b;
-    };
-    [[0,6],[6,10]].forEach(([a,z])=>{
-      const kr=document.createElement("div"); kr.className="keyrow"; kr.style.marginBottom="6px";
-      CARD_KEYS.slice(a,z).forEach(ck=>kr.appendChild(cardKey(ck)));
-      box.appendChild(kr);
-    });
+    box.appendChild(bigCardPad((lab,rank)=>send("/api/card",{rank})));
   } else if(snap.pending==="dealer"){
-    const g=document.createElement("div"); g.className="dealerkeys";
+    const g=document.createElement("div"); g.className="bigkeys dealerpad";
     DEALER_KEYS.forEach(([lab,val])=>{
       const b=document.createElement("button");
-      b.className="key"+(val==="bust"?" bust":""); b.textContent=lab;
+      b.className="bigkey"+(val==="bust"?" bust":""); b.textContent=lab;
       b.onclick=()=>send("/api/dealer",{value:val});
       g.appendChild(b);
     });
@@ -1489,9 +1478,7 @@ function renderPlay(snap){
 }
 function apply(snap){
   const prevCarry = SNAP ? SNAP.carry : null;
-  if(SNAP && SNAP.phase === "play" && snap.phase === "setup"){
-    selBj = null; selUp = "10"; handStr = "";   // fresh setup after a finished round
-  }
+  if(SNAP && SNAP.phase === "play" && snap.phase === "setup") resetSetup();
   SNAP = snap;
   const carryEl = document.getElementById("carry");
   carryEl.textContent = snap.carry+"×";
@@ -1505,7 +1492,10 @@ function apply(snap){
   document.getElementById("situation").textContent = snap.situation;
   document.getElementById("dockTitle").textContent = snap.dock_title;
   renderChips(snap.evs);
-  if(snap.phase==="setup"){ document.getElementById("dockTitle").textContent="NEW ROUND"; renderSetup(); }
+  // The read-out only earns its space once there is something in it.
+  document.querySelector(".readout").style.display =
+    (snap.evs.length || (snap.situation && snap.situation !== "—")) ? "" : "none";
+  if(snap.phase==="setup") renderSetup();
   else { renderFelt(snap.table); renderPlay(snap); }
   const log = document.getElementById("log");
   log.textContent = snap.log.join("\n");
@@ -1521,11 +1511,10 @@ async function send(path, body){ apply(await api(path, body)); }
 
 /* ---- actions ---- */
 async function doDeal(){
-  handStr = document.querySelector("input.hand").value.trim();
-  apply(await api("/api/deal", {hand:handStr, up:selUp, bj:selBj}));
+  apply(await api("/api/deal", {hand:curHand(), up:curUp(), bj:selBj}));
 }
 async function doReset(){
-  selBj=null; selUp="10"; handStr="";
+  resetSetup();
   apply(await api("/api/reset"));
 }
 function undoButton(){
